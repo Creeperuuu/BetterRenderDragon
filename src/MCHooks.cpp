@@ -6,10 +6,11 @@
 #include "mc/client/Renderdragon/Rendering/LightingModels.h"
 #include "mc/deps/core/resource/ResourceLocation.h"
 
+#if defined(_WIN32)
 #include "gui/Options.h"
-
+#include < stacktrace>
+#endif
 #include <iostream>
-#include <stacktrace>
 
 #include <iostream>
 //=====================================================Vanilla2Deferred=====================================================
@@ -18,13 +19,11 @@ char globalGraphicsMode = 0;
 int MaterialResourceManagerOffset = 0;
 
 using dragon::rendering::LightingModels;
-
-bool shouldForceEnableNewVideoSettings() {
-  return brd::Options::vanilla2DeferredAvailable &&
-         brd::Options::vanilla2DeferredEnabled &&
-         brd::Options::newVideoSettingsAvailable &&
-         brd::Options::forceEnableDeferredTechnicalPreview;
+#if defined(_WIN32)
+bool shouldForceEnableVibrantVisuals() {
+  return brd::Options::forceEnableVibrantVisuals;
 }
+#endif
 //======================================================CustomUniforms======================================================
 
 //=====================================================MaterialBinLoader====================================================
@@ -36,7 +35,7 @@ typedef bool (*PFN_ResourcePackManager_load)(void *This,
 //==========================================================================================================================
 
 #include "api/memory/Hook.h"
-
+#if defined(_WIN32)
 int NEW_VIDEO_SETTINGS = 0;
 
 SKY_AUTO_STATIC_HOOK(getGameVersionString, memory::HookPriority::Normal,
@@ -59,28 +58,6 @@ SKY_AUTO_STATIC_HOOK(getGameVersionString, memory::HookPriority::Normal,
     MaterialResourceManagerOffset = 960;
   }
   return version;
-}
-
-SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
-                     " 80 79 ? ? 75 ? 80 79 ? ? 74 ? B0 01 C3 32 C0 C3 CC CC "
-                     "CC CC CC CC CC CC CC CC CC CC CC CC 88 51 ? C3",
-                     bool, __int64 a1) {
-  return true;
-}
-
-SKY_AUTO_STATIC_HOOK(HOOK2, memory::HookPriority::Normal,
-                     "88 51 ? C3 CC CC CC CC CC CC CC CC CC CC CC CC 80 79 ? "
-                     "? 75 ? 83 79 ? ? 74 ? 32 C0 C3",
-                     void, __int64 a1, bool a2) {
-  origin(a1, false);
-}
-
-SKY_AUTO_STATIC_HOOK(
-    HOOK23, memory::HookPriority::Normal,
-    "48 89 5C 24 ? 48 89 74 24 ? 55 57 41 55 41 56 41 57 48 8D 6C 24 ? 48 81 "
-    "EC C0 00 00 00 48 8B 05 ? ? ? ? 48 33 C4 48 89 45 ? C7 45",
-    __int64, __int64 a1) {
-  return 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -106,13 +83,14 @@ SKY_AUTO_STATIC_HOOK(
 
 #include "materialbin.h"
 // AppPlatform::readAssetFile
-SKY_AUTO_STATIC_HOOK(
-    readAssetFileHOOK, memory::HookPriority::Normal,
-    std::initializer_list<const char *>(
-        {// 1.21.60
-         "48 89 5C 24 ? 48 89 7C 24 ? 55 48 8D 6C 24 ? 48 81 EC 60 01 00 00 48 "
-         "8B 05 ? ? ? ? 48 33 C4 48 89 45 ? 48 8B FA"}),
-    std::string *, void *This, std::string *retstr, Core::Path &path) {
+SKY_AUTO_STATIC_HOOK(readAssetFileHOOK, memory::HookPriority::Normal,
+                     std::initializer_list<const char *>(
+                         {// 1.21.60
+                          "48 89 5C 24 ? 48 89 7C 24 ? 55 48 8D 6C 24 ? 48 "
+                          "81 EC 60 01 00 00 48 "
+                          "8B 05 ? ? ? ? 48 33 C4 48 89 45 ? 48 8B FA"}),
+                     std::string *, void *This, std::string *retstr,
+                     Core::Path &path) {
   std::string *result = origin(This, retstr, path);
   if (brd::Options::materialBinLoaderEnabled && brd::Options::redirectShaders &&
       resourcePackManager) {
@@ -230,3 +208,33 @@ void initMCHooks() {
            "found\n");
   }
 }
+
+#endif
+#if defined(__aarch64__)
+SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
+                     "08 EC 40 39 09 E8 40 39", bool, int64_t a1) {
+  *(bool *)(a1 + 56) = 1;
+  *(bool *)(a1 + 57) = 1;
+  *(bool *)(a1 + 58) = 1;
+  *(bool *)(a1 + 59) = 0;
+  *(bool *)(a1 + 60) = 1;
+  return true;
+}
+#elif defined(_WIN32)
+
+SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
+                     " 80 79 ? ? 75 ? 80 79 ? ? 74 ? B0 01 C3 32 C0 C3 CC CC "
+                     "CC CC CC CC CC CC CC CC CC CC CC CC 88 51 ? C3",
+                     bool, int64_t a1) {
+  if (shouldForceEnableVibrantVisuals()) {
+    *(bool *)(a1 + 48) = 1;
+    *(bool *)(a1 + 49) = 1;
+    *(bool *)(a1 + 50) = 1;
+    *(bool *)(a1 + 51) = 0;
+    *(bool *)(a1 + 52) = 1;
+    return true;
+  }
+  return origin(a1);
+}
+
+#endif

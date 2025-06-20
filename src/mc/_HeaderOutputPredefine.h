@@ -64,21 +64,6 @@
 #include "glm/glm.hpp"   // OpenGL Mathematics Library
 #include "gsl/gsl"       // Guideline Support Library
 
-// LevelDB C++ Library
-#include "leveldb/c.h"
-#include "leveldb/cache.h"
-#include "leveldb/comparator.h"
-#include "leveldb/db.h"
-#include "leveldb/dumpfile.h"
-#include "leveldb/env.h"
-#include "leveldb/filter_policy.h"
-#include "leveldb/iterator.h"
-#include "leveldb/options.h"
-#include "leveldb/slice.h"
-#include "leveldb/status.h"
-#include "leveldb/table.h"
-#include "leveldb/table_builder.h"
-#include "leveldb/write_batch.h"
 
 // RapidJSON C++ Library
 #include "rapidjson/document.h"
@@ -106,7 +91,6 @@ struct _TP_WAIT;
 struct _TP_WORK;
 struct _TP_TIMER;
 typedef long HRESULT;
-enum _WINHTTP_WEB_SOCKET_BUFFER_TYPE;
 struct in6_addr;
 struct in_addr;
 struct sockaddr;

@@ -100,7 +100,13 @@ void updateImGui() {
         ImGui::Text("Frame Time: %.01fms", deltaTime * 1000.0f);
         ImGui::Unindent();
       }
-
+      if (ImGui::CollapsingHeader("Vibrant Visuals",
+                                  ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+        ImGui::Checkbox("Force Enable Vibrant Visuals",
+                        Options::forceEnableVibrantVisuals.ptr());
+        ImGui::Unindent();
+      }
       if (Options::vanilla2DeferredEnabled &&
           ImGui::CollapsingHeader("Vanilla2Deferred",
                                   ImGuiTreeNodeFlags_DefaultOpen)) {

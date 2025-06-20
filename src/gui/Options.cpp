@@ -40,6 +40,7 @@ Option<bool> redirectShaders = true;
 bool reloadShadersAvailable = true;
 std::atomic_bool reloadShaders = false;
 Option<bool> customUniformsEnabled = false;
+Option<bool> forceEnableVibrantVisuals = true;
 Option<int> uiKey = ImGuiKey_F6;
 Option<int> reloadShadersKey = ImGuiKey_None;
 
@@ -104,6 +105,7 @@ bool Options::init() {
   options.push_back(&customUniformsEnabled);
   options.push_back(&uiKey);
   options.push_back(&reloadShadersKey);
+  options.push_back(&forceEnableVibrantVisuals);
 
   if (optionsDir.empty()) {
     std::string localStatePath = getMinecraftModsPath();
@@ -174,7 +176,8 @@ bool Options::load() {
     materialBinLoaderEnabled = data["materialBinLoaderEnabled"];
   if (data.contains("redirectShaders"))
     redirectShaders = data["redirectShaders"];
-
+  if (data.contains("forceEnableVibrantVisuals"))
+    forceEnableVibrantVisuals = data["forceEnableVibrantVisuals"];
   // 可扩展 : customUniformsEnabled 等
 
   return true;
@@ -192,6 +195,7 @@ bool Options::save() {
   data["disableRendererContextD3D12RTX"] = disableRendererContextD3D12RTX.get();
   data["materialBinLoaderEnabled"] = materialBinLoaderEnabled.get();
   data["redirectShaders"] = redirectShaders.get();
+  data["forceEnableVibrantVisuals"] = forceEnableVibrantVisuals.get();
   // 可扩展 ...
 
   try {

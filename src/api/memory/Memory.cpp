@@ -1,5 +1,5 @@
 #include "api/memory/Memory.h"
-
+#if defined(_WIN32)
 #include <Windows.h>
 namespace memory {
 void ReplaceVtable(void *_vptr, size_t index, void **outOldFunc,
@@ -19,3 +19,5 @@ void ReplaceVtable(void *_vptr, size_t index, void **outOldFunc,
   VirtualProtect(vptr + index, sizeof(void *), oldProtect, &tmp);
 }
 } // namespace memory
+
+#endif

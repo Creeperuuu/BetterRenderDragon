@@ -47,14 +47,15 @@ extern Option<bool> vanilla2DeferredEnabled;
 extern Option<bool> deferredRenderingEnabled;
 extern Option<bool> forceEnableDeferredTechnicalPreview;
 extern Option<bool> disableRendererContextD3D12RTX;
-
 extern Option<bool> materialBinLoaderEnabled;
 extern Option<bool> redirectShaders;
+extern Option<bool> forceEnableVibrantVisuals;
 extern bool reloadShadersAvailable;
 extern std::atomic_bool reloadShaders;
 extern Option<bool> customUniformsEnabled;
 extern Option<int> uiKey;
 extern Option<int> reloadShadersKey;
+
 extern std::string optionsDir;
 extern std::string optionsFile;
 
