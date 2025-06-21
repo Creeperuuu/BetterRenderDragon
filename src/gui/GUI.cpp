@@ -20,6 +20,8 @@ void updateImGui() {
   static bool showModuleManager = false;
   static bool showAbout = false;
   static bool showChangelog = false;
+  static bool showRayTracingDebugger = false;
+  static bool showDeferGUI = false;
 
   bool resetLayout = false;
   bool moduleManagerRequestFocus = false;
@@ -43,9 +45,12 @@ void updateImGui() {
             showModuleManager = true;
             moduleManagerRequestFocus = true;
           }
-          // if (ImGui::MenuItem("Open ImGui Demo Window")) {
-          //	showDemo = true;
-          // }
+          if (ImGui::MenuItem("Open RayTracing Debugger")) {
+            showRayTracingDebugger = true;
+          }
+          if (ImGui::MenuItem("Open Deferred Shading Debugger")) {
+            showDeferGUI = true;
+          }
           ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Windows")) {
@@ -218,6 +223,14 @@ void updateImGui() {
       ImGui::End();
     }
 
+    if (showRayTracingDebugger) {
+      DrawRayTracingDebugWindow(gRayTracingConfiguration,
+                                &showRayTracingDebugger);
+    }
+
+    if (showDeferGUI) {
+      DrawDeferredShadingParametersDebugWindow(gDeferredParams, &showDeferGUI);
+    }
     if (showAbout) {
       if (aboutRequestFocus)
         ImGui::SetNextWindowFocus();

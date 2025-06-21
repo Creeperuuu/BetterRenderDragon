@@ -4,6 +4,8 @@
 #include "mc/client/Renderdragon/Materials/MaterialUniformName.h"
 #include "mc/client/Renderdragon/Materials/ShaderCodePlatform.h"
 #include "mc/client/Renderdragon/Rendering/LightingModels.h"
+#include "mc/client/bgfx/bgfx.h"
+#include "mc/client/dragon/framerenderer/DeferredShadingParameters.h"
 #include "mc/deps/core/resource/ResourceLocation.h"
 
 #if defined(_WIN32)
@@ -17,6 +19,8 @@
 
 char globalGraphicsMode = 0;
 int MaterialResourceManagerOffset = 0;
+bgfx::RayTracingConfiguration *gRayTracingConfiguration = nullptr;
+dragon::framerenderer::DeferredShadingParameters *gDeferredParams = nullptr;
 
 using dragon::rendering::LightingModels;
 #if defined(_WIN32)
@@ -105,7 +109,7 @@ SKY_AUTO_STATIC_HOOK(readAssetFileHOOK, memory::HookPriority::Normal,
 
       bool success =
           ResourcePackManager_load(resourcePackManager, location, out);
-      std::cout << success << std::endl;
+
       if (success && !out.empty()) {
         bool successful_update = true;
         struct Buffer outbufdata = {0, 0};
@@ -160,17 +164,7 @@ bool discardFrameAndClearShaderCaches(uintptr_t bgfxFrameBuilder) {
 SKY_AUTO_STATIC_HOOK(
     mce_framebuilder_BgfxFrameBuilder_endFrame, memory::HookPriority::Normal,
     std::initializer_list<const char *>(
-        {// 1.21.60
-         "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
-         "B8 10 29 00 00",
-         // 1.21.70
-         "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
-         "B8 00 32 00 00",
-         // 1.21.80
-         "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
-         "B8 60 33 00 00",
-         // 1.21.90
-         "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
+        {"48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
          "B8 40 34 00 00"}),
     void, uintptr_t This, uintptr_t frameBuilderContext) {
   bool clear = false;
@@ -184,6 +178,32 @@ SKY_AUTO_STATIC_HOOK(
   origin(This, frameBuilderContext);
 }
 
+SKY_AUTO_STATIC_HOOK(
+    RayTracingResourcesConstructor, memory::HookPriority::Normal,
+    std::initializer_list<const char *>(
+        {"48 89 5C 24 ? 48 89 4C 24 ? 57 48 83 EC 30 48 8B D9 C6 01 00"}),
+    void, void *_this) {
+  origin(_this);
+  if (!gRayTracingConfiguration) {
+    gRayTracingConfiguration =
+        (bgfx::RayTracingConfiguration *)((int64_t)_this + 40);
+    gRayTracingConfiguration->mRequestRecompileShaders = true;
+  }
+}
+
+SKY_AUTO_STATIC_HOOK(RayTracingResourcesConstrucstor,
+                     memory::HookPriority::Normal,
+                     std::initializer_list<const char *>(
+                         {"48 89 5C 24 ? 48 89 74 24 ? 48 89 4C 24 ? 57 48 83 "
+                          "EC 20 48 8B F9 33 F6 48 89 31 48 89 71 ? C7 41"}),
+                     void, void *_this) {
+  origin(_this);
+  if (!gDeferredParams) {
+    gDeferredParams =
+        (dragon::framerenderer::DeferredShadingParameters *)((int64_t)_this +
+                                                             232);
+  }
+}
 ////////////////////////////////////////////////////////////////////////////////
 void initMCHooks() {
 

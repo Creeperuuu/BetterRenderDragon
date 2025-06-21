@@ -130,7 +130,6 @@ bool Options::init() {
   return true;
 }
 
-// 读选项
 bool Options::load() {
   if (!std::filesystem::exists(optionsFile)) {
     printf("Options file does not exist: %s\n", optionsFile.c_str());
@@ -146,7 +145,6 @@ bool Options::load() {
     std::ifstream ifs(optionsFile, std::ifstream::binary);
     if (!ifs) {
       printf("Cannot open options file: %s\n", optionsFile.c_str());
-      // 尝试保存默认配置
       return save();
     }
     ifs >> data;
@@ -178,12 +176,10 @@ bool Options::load() {
     redirectShaders = data["redirectShaders"];
   if (data.contains("forceEnableVibrantVisuals"))
     forceEnableVibrantVisuals = data["forceEnableVibrantVisuals"];
-  // 可扩展 : customUniformsEnabled 等
 
   return true;
 }
 
-// 写选项
 bool Options::save() {
   json data;
   data["showImGui"] = showImGui.get();
@@ -196,7 +192,6 @@ bool Options::save() {
   data["materialBinLoaderEnabled"] = materialBinLoaderEnabled.get();
   data["redirectShaders"] = redirectShaders.get();
   data["forceEnableVibrantVisuals"] = forceEnableVibrantVisuals.get();
-  // 可扩展 ...
 
   try {
     std::ofstream ofs(optionsFile,
