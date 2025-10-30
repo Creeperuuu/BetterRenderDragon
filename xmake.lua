@@ -4,12 +4,12 @@ add_repositories("liteldev-repo https://github.com/LiteLDev/xmake-repo.git")
 
 if is_plat("windows") then
     add_requires("detours v4.0.1-xmake.1")
-    add_requires("imgui v1.91.0-docking", {configs = {dx11 = true, dx12 = true}})
+    add_requires("imgui v1.91.0-docking", {configs = {dx11 = true, dx12 = true,win32 = true}})
     add_requires("leveldb 1.23")
     add_requires("memorymodulepp")
     set_runtimes("MD")
 elseif is_plat("android") then   
-
+    add_requires("preloader_android 0.1.13")
 end
 
 add_requires("fmt 10.2.1","ctre 3.8.1","magic_enum v0.9.7")
@@ -40,9 +40,7 @@ target("BetterRenderDragon")
         add_links("ntdll","userenv","materialbin","windowsapp")
     end
     if is_plat("android") then 
-        add_links("GlossHook")
-        add_linkdirs("lib")
         add_cxxflags("-DLLVM_TARGETS_TO_BUILD=\"ARM;AArch64;BPF\"")
-        add_packages("cpr","fmt","ctre","magic_enum","imgui","nlohmann_json","entt","glm","gsl","rapidjson","type_safe","expected-lite")
+        add_packages("preloader_android","cpr","fmt","ctre","magic_enum","imgui","nlohmann_json","entt","glm","gsl","rapidjson","type_safe","expected-lite")
         remove_files("src/api/memory/win/**.cpp","src/api/memory/win/**.h","src/MCPatches.cpp","src/MCPatches.h","src/gui/**.cpp","src/imgui/**.cpp","src/gui/**.h","src/imgui/**.h","src/dllmain.cpp","src/utils/**")
     end

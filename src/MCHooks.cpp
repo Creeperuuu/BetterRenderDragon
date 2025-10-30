@@ -64,6 +64,8 @@ SKY_AUTO_STATIC_HOOK(getGameVersionString, memory::HookPriority::Normal,
     MaterialResourceManagerOffset = 960;
   } else if (version.find("1.21.11") != std::string::npos) {
     MaterialResourceManagerOffset = 960;
+  } else if (version.find("1.21.12") != std::string::npos) {
+    MaterialResourceManagerOffset = 960;
   }
   return version;
 }
@@ -77,8 +79,7 @@ SKY_AUTO_STATIC_HOOK(ResourcePackManagerConstructor,
                      memory::HookPriority::Normal,
                      std::initializer_list<const char *>(
                          {// 1.21.90
-                          "4C 8B DC 49 89 5B ? 49 89 53 ? 49 89 4B ? 55 56 57 "
-                          "41 56 41 57 48 83 EC 70 41 0F B6 E9 4D"}),
+                          "4C 8B DC 49 89 5B ? 49 89 53 ? 49 89 4B ? 55 56 57 41 56 41 57 48 83 EC 70 41 0F B6 E9 4D"}),
                      void *, void *This, uintptr_t a2, uintptr_t a3,
                      bool needsToInitialize) {
 
@@ -96,16 +97,8 @@ SKY_AUTO_STATIC_HOOK(ResourcePackManagerConstructor,
 SKY_AUTO_STATIC_HOOK(
     readAssetFileHOOK, memory::HookPriority::Normal,
     std::initializer_list<const char *>(
-        {// 1.21.60
-         "48 89 5C 24 ? 48 89 7C 24 ? 55 48 8D 6C 24 ? 48 "
-         "81 EC 60 01 00 00 48 "
-         "8B 05 ? ? ? ? 48 33 C4 48 89 45 ? 48 8B FA",
-         // 1.21.100
-         "48 89 5C 24 ? 48 89 7C 24 ? 55 48 8D 6C 24 ? 48 81 EC 60 01 00 00 "
-         "48 8B 05 ? ? ? ? 48 33 C4 48 89 45 ? 48 8B F9 48 89 4D",
-         // 1.21.111
-         "48 89 5C 24 ? 48 89 74 24 ? 55 48 8D AC 24 ? ? ? ? 48 81 EC ? ? ? ? "
-         "48 8B 05 ? ? ? ? 48 33 C4 48 89 85 ? ? ? ? 48 8B D9 48 89 4C 24"}),
+        {// 1.21.120
+         "48 89 5C 24 ? 55 56 57 48 8D AC 24 ? ? ? ? 48 81 EC A0 04 00 00"}),
     std::string *, void *This, std::string *retstr, Core::Path &path) {
   std::string *result = origin(This, retstr, path);
   if (brd::Options::materialBinLoaderEnabled && brd::Options::redirectShaders &&
@@ -173,18 +166,13 @@ bool discardFrameAndClearShaderCaches(uintptr_t bgfxFrameBuilder) {
   return false;
 }
 // mce::framebuilder::BgfxFrameBuilder::endFrame
-SKY_AUTO_STATIC_HOOK(
-    mce_framebuilder_BgfxFrameBuilder_endFrame, memory::HookPriority::Normal,
-    std::initializer_list<const char *>(
-        {"48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
-         "B8 40 34 00 00",
-         // 1.21.100
-         "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
-         "B8 D0 30 00 00",
-         // 1.21.111
-         "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? "
-         "B8 C0 1C 00 00"}),
-    void, uintptr_t This, uintptr_t frameBuilderContext) {
+SKY_AUTO_STATIC_HOOK(mce_framebuilder_BgfxFrameBuilder_endFrame,
+                     memory::HookPriority::Normal,
+                     std::initializer_list<const char *>(
+                         {// 1.21.120
+                          "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 "
+                          "8D AC 24 ? ? ? ? B8 10 1D 00 00"}),
+                     void, uintptr_t This, uintptr_t frameBuilderContext) {
   bool clear = false;
   if (brd::Options::reloadShadersAvailable && brd::Options::reloadShaders) {
     brd::Options::reloadShaders = false;
@@ -266,15 +254,14 @@ SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
 #elif defined(_WIN32)
 
 SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
-                     "80 79 ? ? 75 ? 80 79 ? ? 74 ? B0 01 C3 32 C0 C3 CC CC "
-                     "CC CC CC CC CC CC CC CC CC CC CC CC 88 51 ? C3",
+                     "80 79 ? ? 75 ? 80 79 ? ? 74 ? B0 01 C3 32 C0 C3 CC CC CC CC CC CC CC CC CC CC CC CC CC CC 88 51 ? C3",
                      bool, int64_t a1) {
   if (shouldForceEnableVibrantVisuals()) {
-    *(bool *)(a1 + 48) = 1;
-    *(bool *)(a1 + 49) = 1;
-    *(bool *)(a1 + 50) = 1;
-    *(bool *)(a1 + 51) = 0;
-    *(bool *)(a1 + 52) = 1;
+    *(bool *)(a1 + 56) = 1;
+    *(bool *)(a1 + 57) = 1;
+    *(bool *)(a1 + 58) = 1;
+    *(bool *)(a1 + 59) = 0;
+    *(bool *)(a1 + 60) = 1;
     return true;
   }
   return origin(a1);

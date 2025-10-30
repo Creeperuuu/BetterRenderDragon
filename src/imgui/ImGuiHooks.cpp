@@ -14,7 +14,7 @@ using Microsoft::WRL::ComPtr;
 
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_dx11.h"
-#include "imgui_impl_winrt.h"
+#include "backends/imgui_impl_win32.h"
 
 #include "ImGuiHooks.h"
 #include "gui/Options.h"
@@ -26,12 +26,16 @@ using Microsoft::WRL::ComPtr;
 // clang-format on
 
 //=======================================================================================================================================================================
-
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd,
+                                                             UINT msg,
+                                                             WPARAM wParam,
+                                                             LPARAM lParam);
 static IDXGIFactory2 *factory;
-static IUnknown *coreWindow;
+static HWND g_hWnd = nullptr;
 static std::string gpuName;
 static std::string rendererType;
 static bool imguiInitialized = false;
+static WNDPROC oWndProc;
 
 //=======================================================================================================================================================================
 
@@ -130,7 +134,7 @@ bool initializeImguiBackend(IDXGISwapChain *pSwapChain) {
 
     createRT(pSwapChain);
 
-    ImGui_ImplWinRT_Init(coreWindow);
+    ImGui_ImplWin32_Init(g_hWnd);
     ImGui_ImplDX12_Init(
         device.Get(), backBufferCount, DXGI_FORMAT_R8G8B8A8_UNORM,
         descriptorHeapImGuiRender.Get(),
@@ -143,7 +147,7 @@ bool initializeImguiBackend(IDXGISwapChain *pSwapChain) {
 
 void renderImGui(IDXGISwapChain3 *swapChain) {
   ImGui_ImplDX12_NewFrame();
-  ImGui_ImplWinRT_NewFrame();
+  ImGui_ImplWin32_NewFrame();
 
   updateImGui();
 
@@ -261,7 +265,7 @@ bool initializeImguiBackend(IDXGISwapChain *pSwapChain) {
 
   createRT(pSwapChain);
 
-  ImGui_ImplWinRT_Init(coreWindow);
+  ImGui_ImplWin32_Init(g_hWnd);
   ImGui_ImplDX11_Init(device, deviceContext.Get());
   ImGui_ImplDX11_CreateDeviceObjects();
 
@@ -270,7 +274,7 @@ bool initializeImguiBackend(IDXGISwapChain *pSwapChain) {
 
 void renderImGui(IDXGISwapChain3 *swapChain) {
   ImGui_ImplDX11_NewFrame();
-  ImGui_ImplWinRT_NewFrame();
+  ImGui_ImplWin32_NewFrame();
 
   updateImGui();
 
@@ -312,62 +316,52 @@ HRESULT STDMETHODCALLTYPE IDXGISwapChain_ResizeBuffers_Hook(
 
 //=======================================================================================================================================================================
 
-PFN_IDXGIFactory2_CreateSwapChainForCoreWindow
-    Original_IDXGIFactory2_CreateSwapChainForCoreWindow;
-HRESULT STDMETHODCALLTYPE IDXGIFactory2_CreateSwapChainForCoreWindow_Hook(
-    IDXGIFactory2 *This, IUnknown *pDevice, IUnknown *pWindow,
-    const DXGI_SWAP_CHAIN_DESC1 *pDesc, IDXGIOutput *pRestrictToOutput,
-    IDXGISwapChain1 **ppSwapChain) {
-  if (pWindow)
-    coreWindow = pWindow;
+PFN_IDXGIFactory2_CreateSwapChainForHwnd
+    Original_IDXGIFactory2_CreateSwapChainForHwnd;
+HRESULT STDMETHODCALLTYPE IDXGIFactory2_CreateSwapChainForHwnd_Hook(
+    IDXGIFactory2 *This, IUnknown *pDevice, HWND hWnd,
+    const DXGI_SWAP_CHAIN_DESC1 *pDesc,
+    const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *pFullDesc,
+    IDXGIOutput *pRestrictToOutput, IDXGISwapChain1 **ppSwapChain) {
+  printf("IDXGIFactory2::CreateSwapChainForHwnd called\n");
+  g_hWnd = hWnd;
+  oWndProc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(
+      g_hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProc)));
+  HRESULT hr = Original_IDXGIFactory2_CreateSwapChainForHwnd(
+      This, pDevice, hWnd, pDesc, pFullDesc, pRestrictToOutput, ppSwapChain);
 
-  HRESULT hResult = Original_IDXGIFactory2_CreateSwapChainForCoreWindow(
-      This, pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
-  if (SUCCEEDED(hResult)) {
+  if (SUCCEEDED(hr)) {
     IDXGISwapChain1 *swapChain = *ppSwapChain;
     ComPtr<ID3D12CommandQueue> d3d12CommandQueue;
     ComPtr<ID3D11Device> d3d11Device;
+
     if (SUCCEEDED(pDevice->QueryInterface(IID_PPV_ARGS(&d3d12CommandQueue)))) {
-      // Direct3D 12
       ImGuiD3D12::commandQueue = (ID3D12CommandQueue *)pDevice;
-      if (!ImGuiD3D12::Original_IDXGISwapChain_Present)
-        memory::ReplaceVtable(
-            *(void **)swapChain, 8,
-            (void **)&ImGuiD3D12::Original_IDXGISwapChain_Present,
-            ImGuiD3D12::IDXGISwapChain_Present_Hook);
-      if (!ImGuiD3D12::Original_IDXGISwapChain_ResizeBuffers)
-        memory::ReplaceVtable(
-            *(void **)swapChain, 13,
-            (void **)&ImGuiD3D12::Original_IDXGISwapChain_ResizeBuffers,
-            ImGuiD3D12::IDXGISwapChain_ResizeBuffers_Hook);
-      // When the graphics API used by RenderDragon is D3D12, this function will
-      // be called in a non-main thread and later IDXGISwapChain::Present will
-      // be called three times in the main thread, so initialize ImGui later in
-      // IDXGISwapChain::Present
+      memory::ReplaceVtable(
+          *(void **)swapChain, 8,
+          (void **)&ImGuiD3D12::Original_IDXGISwapChain_Present,
+          ImGuiD3D12::IDXGISwapChain_Present_Hook);
+      memory::ReplaceVtable(
+          *(void **)swapChain, 13,
+          (void **)&ImGuiD3D12::Original_IDXGISwapChain_ResizeBuffers,
+          ImGuiD3D12::IDXGISwapChain_ResizeBuffers_Hook);
     } else if (SUCCEEDED(pDevice->QueryInterface(IID_PPV_ARGS(&d3d11Device)))) {
-      // Direct3D 11
       ImGuiD3D11::device = (ID3D11Device *)pDevice;
-      if (!ImGuiD3D11::Original_IDXGISwapChain_Present)
-        memory::ReplaceVtable(
-            *(void **)swapChain, 8,
-            (void **)&ImGuiD3D11::Original_IDXGISwapChain_Present,
-            ImGuiD3D11::IDXGISwapChain_Present_Hook);
-      if (!ImGuiD3D11::Original_IDXGISwapChain_ResizeBuffers)
-        memory::ReplaceVtable(
-            *(void **)swapChain, 13,
-            (void **)&ImGuiD3D11::Original_IDXGISwapChain_ResizeBuffers,
-            ImGuiD3D11::IDXGISwapChain_ResizeBuffers_Hook);
-      // When the graphics API used by RenderDragon is D3D11, this function will
-      // be called in the main thread, and IDXGISwapChain::Present will all be
-      // called in a non-main thread, so initialize ImGui here immediately
-      printf("Initializing ImGui on Direct3D 11\n");
-      if (!(imguiInitialized = ImGuiD3D11::initializeImguiBackend(swapChain))) {
+      memory::ReplaceVtable(
+          *(void **)swapChain, 8,
+          (void **)&ImGuiD3D11::Original_IDXGISwapChain_Present,
+          ImGuiD3D11::IDXGISwapChain_Present_Hook);
+      memory::ReplaceVtable(
+          *(void **)swapChain, 13,
+          (void **)&ImGuiD3D11::Original_IDXGISwapChain_ResizeBuffers,
+          ImGuiD3D11::IDXGISwapChain_ResizeBuffers_Hook);
+
+      printf("Initializing ImGui on Direct3D 11 (Win32)\n");
+      if (!(imguiInitialized = ImGuiD3D11::initializeImguiBackend(swapChain)))
         printf("Failed to initialize ImGui on Direct3D 11\n");
-      }
-    } else {
     }
   }
-  return hResult;
+  return hr;
 }
 
 //=======================================================================================================================================================================
@@ -375,14 +369,14 @@ HRESULT STDMETHODCALLTYPE IDXGIFactory2_CreateSwapChainForCoreWindow_Hook(
 HRESULT (*createDXGIFactory1Original)(REFIID riid, void **ppFactory) = nullptr;
 HRESULT createDXGIFactory1Hook(REFIID riid, void **ppFactory) {
   HRESULT hResult = createDXGIFactory1Original(riid, ppFactory);
-  if (IsEqualIID(IID_IDXGIFactory2, riid) && SUCCEEDED(hResult)) {
-    printf("CreateDXGIFactory1 riid=IID_IDXGIFactory2\n");
+  if (IsEqualIID(IID_IDXGIFactory, riid) && SUCCEEDED(hResult)) {
+    printf("CreateDXGIFactory1 riid=IID_IDXGIFactory2 (Win32)\n");
     IDXGIFactory2 *factory2 = (IDXGIFactory2 *)*ppFactory;
-    if (!Original_IDXGIFactory2_CreateSwapChainForCoreWindow) {
+    if (!Original_IDXGIFactory2_CreateSwapChainForHwnd) {
       memory::ReplaceVtable(
-          *(void **)factory2, 16,
-          (void **)&Original_IDXGIFactory2_CreateSwapChainForCoreWindow,
-          IDXGIFactory2_CreateSwapChainForCoreWindow_Hook);
+          *(void **)factory2, 15,
+          (void **)&Original_IDXGIFactory2_CreateSwapChainForHwnd,
+          IDXGIFactory2_CreateSwapChainForHwnd_Hook);
     }
     factory = factory2;
   }

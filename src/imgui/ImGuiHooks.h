@@ -2,38 +2,30 @@
 #include <dxgi1_6.h>
 #include <string>
 
-
 //=========================================================================================================================//
 
+// CreateDXGIFactory1
 typedef HRESULT(STDMETHODCALLTYPE *PFN_CreateDXGIFactory1)(
     REFIID riid, _COM_Outptr_ void **ppFactory);
-// 16
-typedef HRESULT(
-    STDMETHODCALLTYPE *PFN_IDXGIFactory2_CreateSwapChainForCoreWindow)(
-    IDXGIFactory2 *This,
-    /* [annotation][in] */
-    _In_ IUnknown *pDevice,
-    /* [annotation][in] */
-    _In_ IUnknown *pWindow,
-    /* [annotation][in] */
+
+// IDXGIFactory2::CreateSwapChainForHwnd
+typedef HRESULT(STDMETHODCALLTYPE *PFN_IDXGIFactory2_CreateSwapChainForHwnd)(
+    IDXGIFactory2 *This, _In_ IUnknown *pDevice, _In_ HWND hWnd,
     _In_ const DXGI_SWAP_CHAIN_DESC1 *pDesc,
-    /* [annotation][in] */
+    _In_ const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *,
     _In_opt_ IDXGIOutput *pRestrictToOutput,
-    /* [annotation][out] */
     _COM_Outptr_ IDXGISwapChain1 **ppSwapChain);
-// 8
+
+// IDXGISwapChain::Present
 typedef HRESULT(STDMETHODCALLTYPE *PFN_IDXGISwapChain_Present)(
-    IDXGISwapChain *This,
-    /* [in] */ UINT SyncInterval,
-    /* [in] */ UINT Flags);
-// 13
+    IDXGISwapChain *This, _In_ UINT SyncInterval, _In_ UINT Flags);
+
+// IDXGISwapChain::ResizeBuffers
 typedef HRESULT(STDMETHODCALLTYPE *PFN_IDXGISwapChain_ResizeBuffers)(
-    IDXGISwapChain *This,
-    /* [in] */ UINT BufferCount,
-    /* [in] */ UINT Width,
-    /* [in] */ UINT Height,
-    /* [in] */ DXGI_FORMAT NewFormat,
-    /* [in] */ UINT SwapChainFlags);
+    IDXGISwapChain *This, _In_ UINT BufferCount, _In_ UINT Width,
+    _In_ UINT Height, _In_ DXGI_FORMAT NewFormat, _In_ UINT SwapChainFlags);
+
+//=========================================================================================================================//
 
 void initImGuiHooks();
 std::string getGPUName();

@@ -1,28 +1,18 @@
-// Options.cpp
 #include "Options.h"
 #include "imgui.h"
-#include <Windows.Storage.h>
-#include <iomanip> // For std::setw
+#include <atomic>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <nlohmann/json.hpp>
-#include <string>
-#include <winrt/Windows.Foundation.h>
-#include <winrt/Windows.Storage.h>
-#include <winrt/base.h>
-#include <wrl.h>
-#include <wrl/wrappers/corewrappers.h>
-
 #include <shlobj.h>
+#include <string>
+#include <vector>
 #include <windows.h>
+
 
 using nlohmann::json;
 
-using ABI::Windows::Storage::IApplicationData;
-using ABI::Windows::Storage::IApplicationDataStatics;
-using ABI::Windows::Storage::IStorageFolder;
-using ABI::Windows::Storage::IStorageItem;
-using Microsoft::WRL::ComPtr;
-using Microsoft::WRL::Wrappers::HString;
-using Microsoft::WRL::Wrappers::HStringReference;
 namespace brd {
 // --- Option defs ---
 namespace Options {
@@ -66,27 +56,15 @@ static void DebugTrace(const char *fmt, ...) {
   OutputDebugStringA(buf);
 }
 
-struct WinRTApartmentInit {
-  WinRTApartmentInit() {
-    static bool inited = false;
-    if (!inited) {
-      winrt::init_apartment();
-      inited = true;
-    }
-  }
-};
-static WinRTApartmentInit _apartment_init;
-
 std::string getMinecraftModsPath() {
-  winrt::init_apartment();
+  char appDataPath[MAX_PATH];
+  if (FAILED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appDataPath))) {
+    printf("Failed to get APPDATA path.\n");
+    return "";
+  }
 
-  winrt::Windows::Storage::StorageFolder localFolder =
-      winrt::Windows::Storage::ApplicationData::Current().LocalFolder();
-
-  std::wstring path = localFolder.Path().c_str();
-  path += L"\\mods";
-
-  return std::string(path.begin(), path.end());
+  std::string path = std::string(appDataPath) + "\\Minecraft Bedrock\\mods";
+  return path;
 }
 
 // ----------------- 选项处理函数 -----------------
