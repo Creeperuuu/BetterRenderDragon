@@ -76,3 +76,5 @@ struct DeferredShadingParameters {
 
 } // namespace framerenderer
 } // namespace dragon
+
+static_assert(sizeof(dragon::framerenderer::DeferredShadingParameters) == 0xe0);

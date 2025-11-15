@@ -273,3 +273,5 @@ public:
   bgfx::ProgramHandle incidentLightMeterInline;
 };
 } // namespace bgfx
+
+static_assert(sizeof(bgfx::RayTracingConfiguration) == 0x298);

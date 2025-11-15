@@ -57,14 +57,15 @@ static void DebugTrace(const char *fmt, ...) {
 }
 
 std::string getMinecraftModsPath() {
-  char appDataPath[MAX_PATH];
-  if (FAILED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appDataPath))) {
-    printf("Failed to get APPDATA path.\n");
-    return "";
+  char exePath[MAX_PATH] = {0};
+  DWORD len = GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+  if (len == 0) {
+    // Fallback to current working directory
+    return std::string(".\\mods");
   }
-
-  std::string path = std::string(appDataPath) + "\\Minecraft Bedrock\\mods";
-  return path;
+  std::filesystem::path p(exePath);
+  std::filesystem::path mods = p.parent_path() / "mods";
+  return mods.string();
 }
 
 // ----------------- 选项处理函数 -----------------

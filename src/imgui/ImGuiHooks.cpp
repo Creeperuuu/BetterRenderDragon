@@ -34,6 +34,7 @@ namespace ImGuiD3D12 {
 struct FrameCommand {
   ComPtr<ID3D12CommandAllocator> allocator;
   ComPtr<ID3D12GraphicsCommandList> cmdList;
+  ComPtr<ID3D12DescriptorHeap> rtvHeap;
 };
 
 struct ImGuiD3D12Context {
@@ -41,6 +42,9 @@ struct ImGuiD3D12Context {
   ComPtr<ID3D12CommandQueue> queue;
   ComPtr<IDXGISwapChain3> swapchain;
   ComPtr<ID3D12DescriptorHeap> imguiHeap;
+  ComPtr<ID3D12DescriptorHeap> rtvHeap;
+  D3D12_CPU_DESCRIPTOR_HANDLE rtvStart{};
+  UINT rtvDescriptorSize = 0;
 
   HWND hwnd = nullptr;
   UINT backBufferCount = 0;
@@ -66,6 +70,8 @@ static void InitImGuiDX12() {
   ctx.hwnd = desc.OutputWindow;
   ctx.backBufferCount = desc.BufferCount;
 
+  
+
   D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
   heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   heapDesc.NumDescriptors = ctx.backBufferCount + 8;
@@ -83,12 +89,11 @@ static void InitImGuiDX12() {
     fc.cmdList->Close();
   }
 
-  ImGui::CreateContext();
   initializeImGui(true);
 
   ImGui_ImplWin32_Init(ctx.hwnd);
   ImGui_ImplDX12_Init(ctx.device.Get(), ctx.backBufferCount,
-                      DXGI_FORMAT_R8G8B8A8_UNORM, ctx.imguiHeap.Get(),
+                      desc.BufferDesc.Format, ctx.imguiHeap.Get(),
                       ctx.imguiHeap->GetCPUDescriptorHandleForHeapStart(),
                       ctx.imguiHeap->GetGPUDescriptorHandleForHeapStart());
   ImGui_ImplDX12_CreateDeviceObjects();
@@ -122,12 +127,11 @@ static void RenderImGuiDX12() {
 
   D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle;
   {
-    ComPtr<ID3D12DescriptorHeap> rtvHeap;
-    D3D12_DESCRIPTOR_HEAP_DESC rtvDesc = {};
+    D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{};
     rtvDesc.NumDescriptors = 1;
     rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    ctx.device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&rtvHeap));
-    rtvHandle = rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    ctx.device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&fc.rtvHeap));
+    rtvHandle = fc.rtvHeap->GetCPUDescriptorHandleForHeapStart();
     ctx.device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtvHandle);
     fc.cmdList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
   }
@@ -153,6 +157,7 @@ static void RenderImGuiDX12() {
 }
 
 PFN_IDXGISwapChain_Present Original_IDXGISwapChain_Present = nullptr;
+PFN_IDXGISwapChain_ResizeBuffers Original_IDXGISwapChain_ResizeBuffers_DX12 = nullptr;
 HRESULT STDMETHODCALLTYPE IDXGISwapChain_Present_Hook(IDXGISwapChain *This,
                                                       UINT SyncInterval,
                                                       UINT Flags) {
@@ -169,6 +174,46 @@ HRESULT STDMETHODCALLTYPE IDXGISwapChain_Present_Hook(IDXGISwapChain *This,
     RenderImGuiDX12();
 
   return Original_IDXGISwapChain_Present(This, SyncInterval, Flags);
+}
+
+HRESULT STDMETHODCALLTYPE IDXGISwapChain_ResizeBuffers_Hook(
+    IDXGISwapChain *This, UINT BufferCount, UINT Width, UINT Height,
+    DXGI_FORMAT NewFormat, UINT SwapChainFlags) {
+  auto &ctx = ImGuiD3D12Context::Get();
+
+  ComPtr<ID3D12Fence> fence;
+  ctx.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+  HANDLE evt = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+  UINT64 val = 1;
+  ctx.queue->Signal(fence.Get(), val);
+  fence->SetEventOnCompletion(val, evt);
+  WaitForSingleObject(evt, INFINITE);
+  CloseHandle(evt);
+
+  HRESULT hr = Original_IDXGISwapChain_ResizeBuffers_DX12(
+      This, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+
+  if (SUCCEEDED(hr)) {
+    DXGI_SWAP_CHAIN_DESC desc{};
+    ctx.swapchain->GetDesc(&desc);
+    ctx.backBufferCount = desc.BufferCount;
+
+    
+
+    ctx.frameCommands.clear();
+    ctx.frameCommands.resize(ctx.backBufferCount);
+    for (uint32_t i = 0; i < ctx.backBufferCount; ++i) {
+      FrameCommand &fc = ctx.frameCommands[i];
+      ctx.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                         IID_PPV_ARGS(&fc.allocator));
+      ctx.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                    fc.allocator.Get(), nullptr,
+                                    IID_PPV_ARGS(&fc.cmdList));
+      fc.cmdList->Close();
+    }
+  }
+
+  return hr;
 }
 
 } // namespace ImGuiD3D12
@@ -300,6 +345,10 @@ HRESULT STDMETHODCALLTYPE IDXGIFactory2_CreateSwapChainForHwnd_Hook(
           *(void **)swapChain, 8,
           (void **)&ImGuiD3D12::Original_IDXGISwapChain_Present,
           ImGuiD3D12::IDXGISwapChain_Present_Hook);
+      memory::ReplaceVtable(
+          *(void **)swapChain, 13,
+          (void **)&ImGuiD3D12::Original_IDXGISwapChain_ResizeBuffers_DX12,
+          ImGuiD3D12::IDXGISwapChain_ResizeBuffers_Hook);
     } else if (SUCCEEDED(pDevice->QueryInterface(IID_PPV_ARGS(&d3d11Device)))) {
       ImGuiD3D11::device = (ID3D11Device *)pDevice;
       memory::ReplaceVtable(

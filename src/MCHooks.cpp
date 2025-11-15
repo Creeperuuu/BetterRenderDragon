@@ -185,19 +185,25 @@ SKY_AUTO_STATIC_HOOK(mce_framebuilder_BgfxFrameBuilder_endFrame,
   origin(This, frameBuilderContext);
 }
 
+// RayTracingFeatureConfiguration
 SKY_AUTO_STATIC_HOOK(
     RayTracingResourcesConstructor, memory::HookPriority::Normal,
     std::initializer_list<const char *>(
-        {"48 89 5C 24 ? 48 89 4C 24 ? 57 48 83 EC 30 48 8B D9 C6 01 00"}),
-    void, void *_this) {
-  origin(_this);
-  if (!gRayTracingConfiguration) {
-    gRayTracingConfiguration =
-        (bgfx::RayTracingConfiguration *)((int64_t)_this + 40);
-    gRayTracingConfiguration->mRequestRecompileShaders = true;
-  }
+        {"48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 56 48 83 EC 50 0F 29 74 24 ? 48 "
+         "8B 05 ? ? ? ? 48 33 C4 48 89 44 24 ? 4D 8B F1"}),
+    void, void *_this, bool rtxOn, void *dlssOptions, void *screenResolution,
+    float renderScale, void *onResolutionChangedCallback, void *debugModeInfo) {
+  gRayTracingConfiguration =
+      (bgfx::RayTracingConfiguration *)((int64_t)_this + 32);
+  origin(_this, rtxOn, dlssOptions, screenResolution, renderScale,
+         onResolutionChangedCallback, debugModeInfo);
+
+  // if (!gRayTracingConfiguration) {
+  gRayTracingConfiguration->mRequestRecompileShaders = true;
+  // }
 }
 
+//
 SKY_AUTO_STATIC_HOOK(RayTracingResourcesConstrucstor,
                      memory::HookPriority::Normal,
                      std::initializer_list<const char *>(
@@ -208,7 +214,7 @@ SKY_AUTO_STATIC_HOOK(RayTracingResourcesConstrucstor,
   if (!gDeferredParams) {
     gDeferredParams =
         (dragon::framerenderer::DeferredShadingParameters *)((int64_t)_this +
-                                                             232);
+                                                             176);
   }
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -258,12 +264,13 @@ SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
                      "80 79 ? ? 75 ? 80 79 ? ? 74 ? B0 01 C3 32 C0 C3 CC CC CC "
                      "CC CC CC CC CC CC CC CC CC CC CC 88 51 ? C3",
                      bool, int64_t a1) {
+
   if (shouldForceEnableVibrantVisuals()) {
-    *(bool *)(a1 + 56) = 1;
-    *(bool *)(a1 + 57) = 1;
-    *(bool *)(a1 + 58) = 1;
-    *(bool *)(a1 + 59) = 0;
-    *(bool *)(a1 + 60) = 1;
+    *(bool *)(a1 + 48) = 1;
+    *(bool *)(a1 + 49) = 1;
+    *(bool *)(a1 + 50) = 1;
+    *(bool *)(a1 + 51) = 0;
+    *(bool *)(a1 + 52) = 1;
     return true;
   }
   return origin(a1);
