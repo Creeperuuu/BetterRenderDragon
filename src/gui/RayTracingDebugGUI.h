@@ -3,5 +3,4 @@
 namespace bgfx {
 struct RayTracingConfiguration;
 }
-void DrawRayTracingDebugWindow(bgfx::RayTracingConfiguration *config,
-                               bool *p_open = nullptr);
+void DrawRayTracingDebugWindow(bool *p_open = nullptr);

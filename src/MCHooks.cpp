@@ -19,7 +19,9 @@
 
 char globalGraphicsMode = 0;
 int MaterialResourceManagerOffset = 0;
-bgfx::RayTracingConfiguration *gRayTracingConfiguration = nullptr;
+
+bgfx::RayTracingFeatureConfiguration *gRayTracingFeatureConfiguration = nullptr;
+
 dragon::framerenderer::DeferredShadingParameters *gDeferredParams = nullptr;
 
 using dragon::rendering::LightingModels;
@@ -191,16 +193,14 @@ SKY_AUTO_STATIC_HOOK(
     std::initializer_list<const char *>(
         {"48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 56 48 83 EC 50 0F 29 74 24 ? 48 "
          "8B 05 ? ? ? ? 48 33 C4 48 89 44 24 ? 4D 8B F1"}),
-    void, void *_this, bool rtxOn, void *dlssOptions, void *screenResolution,
-    float renderScale, void *onResolutionChangedCallback, void *debugModeInfo) {
-  gRayTracingConfiguration =
-      (bgfx::RayTracingConfiguration *)((int64_t)_this + 32);
+    void, bgfx::RayTracingFeatureConfiguration *_this, bool rtxOn,
+    void *dlssOptions, void *screenResolution, float renderScale,
+    void *onResolutionChangedCallback, void *debugModeInfo) {
+
+  gRayTracingFeatureConfiguration = _this;
+
   origin(_this, rtxOn, dlssOptions, screenResolution, renderScale,
          onResolutionChangedCallback, debugModeInfo);
-
-  // if (!gRayTracingConfiguration) {
-  gRayTracingConfiguration->mRequestRecompileShaders = true;
-  // }
 }
 
 //

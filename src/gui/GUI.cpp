@@ -229,8 +229,7 @@ void updateImGui() {
     }
 
     if (showRayTracingDebugger) {
-      DrawRayTracingDebugWindow(gRayTracingConfiguration,
-                                &showRayTracingDebugger);
+      DrawRayTracingDebugWindow(&showRayTracingDebugger);
     }
 
     if (showDeferGUI) {
