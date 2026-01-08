@@ -128,22 +128,10 @@ SKY_AUTO_STATIC_HOOK(
 
       bool success =
           ResourcePackManager_load(resourcePackManager, location, out);
-      if (success && !out.empty()) {
-        bool successful_update = true;
-        struct Buffer outbufdata = {0, 0};
-        if (update_file(out.length(), (const uint8_t *)out.c_str(),
-                        &outbufdata) != 0) {
-          // printf("Updating failed!");
-          successful_update = false;
-          free_buf(outbufdata);
-        }
 
-        if (!successful_update) {
-          result->assign(out);
-        } else {
-          result->assign((const char *)outbufdata.data, outbufdata.len);
-          free_buf(outbufdata);
-        }
+      if (success && !out.empty()) {
+
+        result->assign(out);
       }
       // printf("ResourcePackManager::load ret=%d\n", success);
     }
