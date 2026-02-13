@@ -15,21 +15,8 @@
 #include <fcntl.h>
 #include <io.h>
 namespace memory {
-void openConsole() {
-  if (AllocConsole()) {
-    SetConsoleTitleA("PreLoader Debug Console");
 
-    FILE *stream;
-    freopen_s(&stream, "CONOUT$", "w", stdout);
-    freopen_s(&stream, "CONOUT$", "w", stderr);
-    freopen_s(&stream, "CONIN$", "r", stdin);
-
-    setvbuf(stdout, nullptr, _IONBF, 0);
-    setvbuf(stderr, nullptr, _IONBF, 0);
-  }
-}
 FuncPtr resolveIdentifier(char const *identifier) {
-  // openConsole();
   return resolveSignature(identifier);
 }
 
@@ -40,8 +27,8 @@ FuncPtr resolveIdentifier(std::initializer_list<const char *> identifiers) {
       return result;
     }
   }
-  std::cout << "Failed to resolve identifier" << std::endl;
-  std::cout << *identifiers.begin() << std::endl;
+  printf("Failed to resolve identifier\n");
+  printf("%s\n", *identifiers.begin());
   return nullptr;
 }
 

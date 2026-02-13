@@ -7,6 +7,8 @@
 #include "mc/client/bgfx/bgfx.h"
 #include "mc/client/dragon/framerenderer/DeferredShadingParameters.h"
 #include "mc/deps/core/resource/ResourceLocation.h"
+#include <codecvt>
+#include <cstdio>
 
 #if defined(_WIN32)
 #include "gui/Options.h"
@@ -73,6 +75,8 @@ SKY_AUTO_STATIC_HOOK(getGameVersionString, memory::HookPriority::Normal,
     MaterialResourceManagerOffset = 960;
   } else if (version.find("1.21.13") != std::string::npos) {
     MaterialResourceManagerOffset = 960;
+  } else if (version.find("1.26.0") != std::string::npos) {
+    MaterialResourceManagerOffset = 960;
   }
   return version;
 }
@@ -89,8 +93,8 @@ SKY_AUTO_STATIC_HOOK(
          "48 89 5C 24 ? 55 56 57 41 56 41 57 48 81 EC 90 00 00 00 48 8B 05 ? ? "
          "? ? 48 33 C4 48 89 84 24 ? ? ? ? 41 0F B6 E9 4D 8B F0",
          // 1.21.90
-         "4C 8B DC 49 89 5B ? 49 89 53 ? 49 89 4B ? 55 56 57 "
-         "41 56 41 57 48 83 EC 70 41 0F B6 E9 4D"}),
+         "4C 8B DC 49 89 5B ? 49 89 53 ? 49 89 4B ? 55 56 57 41 56 41 57 48 83 "
+         "EC 70 41 0F B6 E9 4D"}),
     void *, void *This, uintptr_t a2, uintptr_t a3, bool needsToInitialize) {
 
   void *result = origin(This, a2, a3, needsToInitialize);
@@ -101,42 +105,136 @@ SKY_AUTO_STATIC_HOOK(
   }
   return result;
 }
+class TempFileWrapper {
+private:
+  FILE *m_file;
+  std::wstring m_path;
 
-#include "materialbin.h"
-// AppPlatform::readAssetFile
-SKY_AUTO_STATIC_HOOK(
-    readAssetFileHOOK, memory::HookPriority::Normal,
-    std::initializer_list<const char *>(
-        {// 1.21.130
-         "48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 48 8D 6C 24 ? 48 81 EC "
-         "F0 00 00 00 48 8B F2",
-         // 1.21.120
-         "48 89 5C 24 ? 55 56 57 48 8D AC 24 ? ? ? ? 48 81 EC A0 04 00 00"}),
-    std::string *, void *This, std::string *retstr, Core::Path &path) {
-  std::string *result = origin(This, retstr, path);
-  if (brd::Options::materialBinLoaderEnabled && brd::Options::redirectShaders &&
-      resourcePackManager) {
-    const std::string &p = path.getUtf8StdString();
-    if (p.find("data/renderer/materials/") != std::string::npos &&
-        strncmp(p.c_str() + p.size() - 13, ".material.bin", 13) == 0) {
+public:
+  TempFileWrapper(const std::string &content) : m_file(nullptr) {
+    wchar_t tempPath[MAX_PATH];
+    wchar_t tempFile[MAX_PATH];
 
-      std::string binPath =
-          "renderer/materials/" + p.substr(p.find_last_of('/') + 1);
-      ResourceLocation location(binPath);
-      std::string out;
-      // printf("ResourcePackManager::load path=%s\n", binPath.c_str());
+    if (GetTempPathW(MAX_PATH, tempPath) == 0) {
+      return;
+    }
 
-      bool success =
-          ResourcePackManager_load(resourcePackManager, location, out);
+    if (GetTempFileNameW(tempPath, L"brd", 0, tempFile) == 0) {
+      return;
+    }
 
-      if (success && !out.empty()) {
+    m_path = tempFile;
 
-        result->assign(out);
-      }
-      // printf("ResourcePackManager::load ret=%d\n", success);
+    HANDLE hFile = CreateFileW(m_path.c_str(), GENERIC_WRITE, 0, nullptr,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) {
+      return;
+    }
+
+    DWORD written = 0;
+    WriteFile(hFile, content.data(), static_cast<DWORD>(content.size()),
+              &written, nullptr);
+    CloseHandle(hFile);
+
+    m_file = _wfsopen(m_path.c_str(), L"rb", _SH_DENYNO);
+  }
+
+  ~TempFileWrapper() {
+    if (m_file) {
+      fclose(m_file);
+    }
+    if (!m_path.empty()) {
+      DeleteFileW(m_path.c_str());
     }
   }
-  return result;
+
+  FILE *get() const { return m_file; }
+
+  TempFileWrapper(const TempFileWrapper &) = delete;
+  TempFileWrapper &operator=(const TempFileWrapper &) = delete;
+
+  TempFileWrapper(TempFileWrapper &&other) noexcept
+      : m_file(other.m_file), m_path(std::move(other.m_path)) {
+    other.m_file = nullptr;
+  }
+
+  TempFileWrapper &operator=(TempFileWrapper &&other) noexcept {
+    if (this != &other) {
+      if (m_file)
+        fclose(m_file);
+      if (!m_path.empty())
+        DeleteFileW(m_path.c_str());
+
+      m_file = other.m_file;
+      m_path = std::move(other.m_path);
+      other.m_file = nullptr;
+    }
+    return *this;
+  }
+};
+std::string utf16_to_utf8(const std::wstring &wstr) {
+  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+  return conv.to_bytes(wstr);
+}
+
+std::string strip_data(const std::string &s) {
+  std::string tail;
+
+  const std::string data_tag = "data/";
+  size_t pos = s.rfind(data_tag);
+  if (pos != std::string::npos) {
+    return s.substr(pos + data_tag.size());
+  }
+  return s;
+}
+
+static void *GetWFSOpenPtr() {
+  HMODULE hCRT = GetModuleHandleW(L"ucrtbase.dll");
+  if (!hCRT)
+    hCRT = GetModuleHandleW(L"msvcrt.dll");
+  if (hCRT)
+    return GetProcAddress(hCRT, "_wfsopen");
+  return nullptr;
+}
+
+static void *true_wfsopen = GetWFSOpenPtr();
+
+SKY_AUTO_STATIC_HOOK(readFileHOOK, memory::HookPriority::Normal, true_wfsopen,
+                     FILE *, const wchar_t *wpath, const wchar_t *mode,
+                     int shflag) {
+
+  std::string p = utf16_to_utf8(wpath);
+  std::string inner_p = strip_data(p);
+  if (brd::Options::materialBinLoaderEnabled && brd::Options::redirectShaders &&
+      resourcePackManager) {
+    std::string out;
+    if (inner_p.find("renderer/materials/") != std::string::npos) {
+      ResourceLocation location(inner_p);
+      ResourcePackManager_load(resourcePackManager, location, out);
+    }
+
+    if (!out.empty()) {
+      static std::vector<TempFileWrapper> tempFiles;
+      static std::mutex tempFilesMutex;
+
+      tempFiles.emplace_back(out);
+      auto &wrapper = tempFiles.back();
+
+      if (wrapper.get()) {
+        std::lock_guard<std::mutex> lock(tempFilesMutex);
+        tempFiles.erase(std::remove_if(tempFiles.begin(), tempFiles.end(),
+                                       [](const TempFileWrapper &w) {
+                                         return w.get() == nullptr;
+                                       }),
+                        tempFiles.end());
+
+        return wrapper.get();
+      } else {
+        tempFiles.pop_back();
+      }
+    }
+  }
+  return origin(wpath, mode, shflag);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -170,7 +268,10 @@ bool discardFrameAndClearShaderCaches(uintptr_t bgfxFrameBuilder) {
 SKY_AUTO_STATIC_HOOK(mce_framebuilder_BgfxFrameBuilder_endFrame,
                      memory::HookPriority::Normal,
                      std::initializer_list<const char *>(
-                         {// 1.21.130
+                         {// 1.26.0
+                          "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 "
+                          "8D AC 24 ? ? ? ? B8 A0 1D 00 00",
+                          // 1.21.130
                           "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 "
                           "8D AC 24 ? ? ? ? B8 20 1D 00 00",
                           // 1.21.120
@@ -192,7 +293,8 @@ SKY_AUTO_STATIC_HOOK(mce_framebuilder_BgfxFrameBuilder_endFrame,
 SKY_AUTO_STATIC_HOOK(
     RayTracingResourcesConstructor, memory::HookPriority::Normal,
     std::initializer_list<const char *>(
-        {"48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 56 48 83 EC 50 0F 29 74 24 ? 48 "
+        {"48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 56 48 83 EC 50 0F 29 74 24 ? "
+         "48 "
          "8B 05 ? ? ? ? 48 33 C4 48 89 44 24 ? 4D 8B F1"}),
     void, bgfx::RayTracingFeatureConfiguration *_this, bool rtxOn,
     void *dlssOptions, void *screenResolution, float renderScale,
@@ -224,7 +326,8 @@ void initMCHooks() {
   discardFrame = (PFN_mce_framebuilder_BgfxFrameBuilder_discardFrame)
       memory::resolveIdentifier(
           {// 1.21.130
-           "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 54 41 55 41 56 41 "
+           "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 54 41 55 41 56 "
+           "41 "
            "57 48 81 EC 90 00 00 00 88 54 24",
            // 1.21.120
            "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? "
@@ -244,7 +347,8 @@ void initMCHooks() {
       (PFN_dragon_materials_CompiledMaterialManager_freeShaderBlobs)
           memory::resolveIdentifier(
               {// 1.21.130
-               "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 54 41 55 41 56 "
+               "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 54 41 55 41 "
+               "56 "
                "41 "
                "57 48 83 EC 30 4C 8B E9 48 83 C1 40",
 
@@ -258,6 +362,7 @@ void initMCHooks() {
 }
 
 #endif
+// 59/58 1.26
 #if defined(__aarch64__)
 SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
                      "08 EC 40 39 09 E8 40 39", bool, int64_t a1) {
@@ -270,6 +375,7 @@ SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
 }
 #elif defined(_WIN32)
 
+// 50/51 1.26
 SKY_AUTO_STATIC_HOOK(HOOK1, memory::HookPriority::Normal,
                      "80 79 ? ? 75 ? 80 79 ? ? 74 ? B0 01 C3 32 C0 C3 CC CC CC "
                      "CC CC CC CC CC CC CC CC CC CC CC 88 51 ? C3",
