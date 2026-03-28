@@ -89,9 +89,10 @@ PFN_mce_framebuilder_BgfxFrameBuilder_discardFrame discardFrame = nullptr;
 PFN_dragon_materials_CompiledMaterialManager_freeShaderBlobs freeShaderBlobs = nullptr;
 
 bool discardFrameAndClearShaderCaches(uintptr_t bgfxFrameBuilder) {
+    // 48 8B ? ? 48 8B ? ? 48 05 ? ? ? ? C3 CC 48 8B ? ? 48 8B ? ? 48 05 ? ? ? ? C3 CC 48 8B ? ? 48 8B ? ? ? ? ? C3
     uintptr_t compiledMaterialManager = *(uintptr_t *)(*(uintptr_t *)(bgfxFrameBuilder + 40) + 16) + 776;
     uintptr_t mExtractor = *(uintptr_t *)(bgfxFrameBuilder + 32);
-    MaterialResourceManager *mMaterialsManager = (MaterialResourceManager *)*(uintptr_t *)(mExtractor + 960);
+    MaterialResourceManager *mMaterialsManager = (MaterialResourceManager *)*(uintptr_t *)(mExtractor + 944);
 
     if (discardFrame && freeShaderBlobs && mMaterialsManager) {
         discardFrame(bgfxFrameBuilder, true);
@@ -151,6 +152,8 @@ void initMCHooks() {
 
     discardFrame = (PFN_mce_framebuilder_BgfxFrameBuilder_discardFrame)
         FindSignatures(
+            // 1.26.10
+            "48 89 5C 24 ? 88 54 24 ? 55 56 57 41 54",
             // 1.21.130
             "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 54 41 55 41 56 41 57 48 81 EC 90 00 00 00 88 54 24",
             // 1.21.120
@@ -177,6 +180,8 @@ void initMCHooks() {
     }
 
     TrySigHook(clientInstance_Update,
+        // 1.26.10
+        "48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 41 56 41 57 48 8D AC 24 ? ? ? ? 48 81 EC ? ? ? ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 85 ? ? ? ? 44 0F B6 FA",
         //1.21.111
         "48 89 5C 24 ? 48 89 74 24 ? 55 57 41 54 41 56 41 57 48 8D AC 24 ? ? ? ? 48 81 EC ? ? ? ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 85 ? ? ? ? 44 0F B6 FA 48 8B F9 33 DB"
     );
@@ -186,6 +191,8 @@ void initMCHooks() {
         "40 53 48 83 EC ? 41 0F 10 00 48 8B DA 48 8D 54 24 ? 48 8B CB 0F 11 44 24 ? E8 ? ? ? ? 48 8B C3 48 83 C4 ? 5B C3 CC CC CC CC CC CC CC CC 48 89 5C 24"
     );
     TrySigHook(mce_framebuilder_BgfxFrameBuilder_endFrame,
+        // 1.26.10
+        "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? B8 ? ? ? ? E8 ? ? ? ? 48 2B E0 0F 29 B4 24 ? ? ? ? 0F 29 BC 24 ? ? ? ? 44 0F 29 84 24 ? ? ? ? 44 0F 29 8C 24 ? ? ? ? 48 8B 05",
         // 1.26.0
         "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? B8 A0 1D 00 00",
         // 1.21.130

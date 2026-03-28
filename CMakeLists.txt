@@ -28,6 +28,11 @@ download(rapidjson https://github.com/Tencent/rapidjson.git v1.1.0)
 download(type_safe https://github.com/foonathan/type_safe.git v0.2.4)
 download(imgui https://github.com/ocornut/imgui.git docking)
 download(expected-lite https://github.com/nonstd-lite/expected-lite.git v0.8.0)
+set(KIERO_INCLUDE_D3D11 ON)
+set(KIERO_INCLUDE_D3D12 ON)
+set(KIERO_BUILD_EXAMPLES OFF)
+download(kiero https://github.com/BasedInc/kiero.git master)
+download(safetyhook https://github.com/cursey/safetyhook.git main)
 
 set(IMGUI_SOURCE_FILES
         ${imgui_SOURCE_DIR}/imgui.cpp
@@ -54,4 +59,4 @@ target_include_directories(BetterRenderDragon PRIVATE "${rapidjson_SOURCE_DIR}/i
 target_include_directories(BetterRenderDragon PRIVATE "${imgui_SOURCE_DIR}")
 target_include_directories(BetterRenderDragon PRIVATE "${imgui_SOURCE_DIR}/backends")
 
-target_link_libraries(BetterRenderDragon PRIVATE minhook libhat nlohmann_json::nlohmann_json glm::glm Microsoft.GSL::GSL EnTT::EnTT type_safe d3d11 d3d12 dxgi d2d1 dwrite d3dcompiler expected-lite)
+target_link_libraries(BetterRenderDragon PRIVATE minhook libhat nlohmann_json::nlohmann_json glm::glm Microsoft.GSL::GSL EnTT::EnTT type_safe d3d11 d3d12 dxgi d2d1 dwrite d3dcompiler expected-lite kiero safetyhook windowsapp)

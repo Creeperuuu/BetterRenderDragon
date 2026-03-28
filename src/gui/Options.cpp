@@ -28,7 +28,7 @@ namespace Options {
   Option<bool> disableRendererContextD3D12RTX = false;
   Option<bool> materialBinLoaderEnabled = true;
   Option<bool> redirectShaders = true;
-  bool reloadShadersAvailable = true;
+  bool reloadShadersAvailable = false;
   std::atomic_bool reloadShaders = false;
   Option<bool> customUniformsEnabled = false;
   Option<bool> forceEnableVibrantVisuals = true;

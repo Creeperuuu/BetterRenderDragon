@@ -1,8 +1,16 @@
+// This code is based on MCBE-DLL-Menu by h-arvs
+// Source: https://github.com/h-arvs/MCBE-DLL-Menu
+// Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+// Changes were made.
+
 #include <windows.h>
 #include <wrl/client.h>
 
 #include "MinHook.h"
 #include "api/memory/HookAPI.hpp"
+#include <kiero.hpp>
+#include <winrt/base.h>
+#include <safetyhook.hpp>
 using Microsoft::WRL::ComPtr;
 
 #include <atomic>
@@ -22,417 +30,175 @@ using Microsoft::WRL::ComPtr;
 #include "ImGuiHooks.h"
 #include "api/memory/Hook.h"
 #include "gui/GUI.h"
+#include <d3d11on12.h>
 
-static HWND g_hWnd = nullptr;
-static bool imguiInitialized = false;
-static WNDPROC oWndProc;
+HWND window{};
+bool uninject = false;
 
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
-                                                             LPARAM);
+winrt::com_ptr<ID3D11Device> g_d3d11Device{};
+winrt::com_ptr<ID3D11On12Device> g_d3d11on12Device{};
+winrt::com_ptr<ID3D11DeviceContext> g_d3d11DeviceContext{};
+winrt::com_ptr<ID3D12CommandQueue> g_d3d12CommandQueue{};
 
-namespace ImGuiD3D12 {
-
-struct ImGuiDX12Resources {
-  ComPtr<ID3D12Device> device;
-  ComPtr<ID3D12CommandQueue> queue;
-  ComPtr<IDXGISwapChain3> swapchain;
-
-  ComPtr<ID3D12DescriptorHeap> imguiSrvHeap;
-
-  UINT backBufferCount = 0;
-  HWND hwnd = nullptr;
-  bool initialized = false;
-
-  std::vector<ComPtr<ID3D12CommandAllocator>> commandAllocators;
-  std::vector<ComPtr<ID3D12GraphicsCommandList>> commandLists;
-  std::vector<ComPtr<ID3D12DescriptorHeap>> rtvHeaps;
-
-  std::mutex mtx;
-
-  static ImGuiDX12Resources &Get() {
-    static ImGuiDX12Resources ctx;
-    return ctx;
-  }
+struct BufferData {
+    winrt::com_ptr<ID3D12Resource> native;
+    winrt::com_ptr<ID3D11Resource> wrapped;
 };
 
-static void InitImGuiDX12() {
-  auto &ctx = ImGuiDX12Resources::Get();
-  if (ctx.initialized)
-    return;
+static std::vector<BufferData> wrappedBuffers;
 
-  if (!ctx.device || !ctx.swapchain || !ctx.queue) {
-    Logger::log("InitImGuiDX12 failed!!!");
-    return;
-  }
+safetyhook::InlineHook presentHookImpl{};
 
-  DXGI_SWAP_CHAIN_DESC desc{};
-  if (FAILED(ctx.swapchain->GetDesc(&desc))) {
-    Logger::log("swapchain->GetDesc failed");
-    return;
-  }
-  ctx.hwnd = desc.OutputWindow;
-  ctx.backBufferCount = desc.BufferCount;
-
-  D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-  heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-  heapDesc.NumDescriptors = ctx.backBufferCount + 8;
-  heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  ctx.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&ctx.imguiSrvHeap));
-
-  ctx.commandAllocators.resize(ctx.backBufferCount);
-  ctx.commandLists.resize(ctx.backBufferCount);
-  ctx.rtvHeaps.resize(ctx.backBufferCount);
-
-  for (uint32_t i = 0; i < ctx.backBufferCount; ++i) {
-    ctx.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                       IID_PPV_ARGS(&ctx.commandAllocators[i]));
-    ctx.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                  ctx.commandAllocators[i].Get(), nullptr,
-                                  IID_PPV_ARGS(&ctx.commandLists[i]));
-    ctx.commandLists[i]->Close();
-  }
-
-  initializeImGui(true);
-
-  ImGui_ImplWin32_Init(ctx.hwnd);
-
-  ImGui_ImplDX12_Init(ctx.device.Get(), ctx.backBufferCount,
-                      desc.BufferDesc.Format, ctx.imguiSrvHeap.Get(),
-                      ctx.imguiSrvHeap->GetCPUDescriptorHandleForHeapStart(),
-                      ctx.imguiSrvHeap->GetGPUDescriptorHandleForHeapStart());
-  ImGui_ImplDX12_CreateDeviceObjects();
-
-  ctx.initialized = true;
+void resetD3DState() {
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+    for (auto &bufferData : wrappedBuffers) {
+        bufferData.wrapped.detach();
+        bufferData.native.detach();
+    }
+    wrappedBuffers.clear();
+    g_d3d11DeviceContext = nullptr;
+    g_d3d11on12Device = nullptr;
+    g_d3d11Device = nullptr;
 }
 
-static void RenderImGuiDX12() {
-  auto &ctx = ImGuiDX12Resources::Get();
-  if (!ctx.initialized)
-    return;
+HRESULT presentHook(IDXGISwapChain3 *pSwapChain, UINT SyncInterval, UINT Flags) {
+    if (!g_d3d11Device) {
+        winrt::com_ptr<ID3D12Device> d3d12Device{};
+        if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(d3d12Device.put())))) {
+            UINT deviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_SINGLETHREADED;
 
-  std::lock_guard<std::mutex> lock(ctx.mtx);
+            auto commandQueue = g_d3d12CommandQueue.get();
 
-  UINT backIdx = ctx.swapchain->GetCurrentBackBufferIndex();
-  ComPtr<ID3D12CommandAllocator> &allocator = ctx.commandAllocators[backIdx];
-  ComPtr<ID3D12GraphicsCommandList> &cmdList = ctx.commandLists[backIdx];
-  ComPtr<ID3D12DescriptorHeap> &rtvHeap = ctx.rtvHeaps[backIdx];
+            if (!commandQueue) {
+                return presentHookImpl.call<HRESULT>(pSwapChain, SyncInterval, Flags);
+            }
 
-  allocator->Reset();
-  cmdList->Reset(allocator.Get(), nullptr);
+            HRESULT hr = D3D11On12CreateDevice(d3d12Device.get(), deviceFlags, nullptr, 0,
+                                               reinterpret_cast<IUnknown *const *>(&commandQueue), 1, 0,
+                                               g_d3d11Device.put(), g_d3d11DeviceContext.put(), nullptr);
+            if (FAILED(hr)) {
+                Logger::log("D3D11On12CreateDevice failed: 0x%08X", static_cast<unsigned int>(hr));
+                return presentHookImpl.call<HRESULT>(pSwapChain, SyncInterval, Flags);
+            }
 
-  ComPtr<ID3D12Resource> backBuffer;
-  ctx.swapchain->GetBuffer(backIdx, IID_PPV_ARGS(&backBuffer));
+            g_d3d11on12Device = g_d3d11Device.as<ID3D11On12Device>();
 
-  D3D12_RESOURCE_BARRIER beforeBarrier = {};
-  beforeBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  beforeBarrier.Transition.pResource = backBuffer.Get();
-  beforeBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-  beforeBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-  beforeBarrier.Transition.Subresource =
-      D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  cmdList->ResourceBarrier(1, &beforeBarrier);
+            Logger::log("Initialized d3d11on12");
+        } else if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(g_d3d11Device.put())))) {
+            g_d3d11Device->GetImmediateContext(g_d3d11DeviceContext.put());
+        } else {
+            return presentHookImpl.call<HRESULT>(pSwapChain, SyncInterval, Flags);
+        }
 
-  D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{};
-  rtvDesc.NumDescriptors = 1;
-  rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-  if (!rtvHeap) {
-    ctx.device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&rtvHeap));
-  }
-
-  D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle =
-      rtvHeap->GetCPUDescriptorHandleForHeapStart();
-  ctx.device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtvHandle);
-
-  cmdList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
-
-  ID3D12DescriptorHeap *heaps[] = {ctx.imguiSrvHeap.Get()};
-  cmdList->SetDescriptorHeaps(1, heaps);
-
-
-  ImGui_ImplDX12_NewFrame();
-  ImGui_ImplWin32_NewFrame();
-  updateImGui();
-  ImGui::Render();
-
-  ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmdList.Get());
-
-  D3D12_RESOURCE_BARRIER afterBarrier = beforeBarrier;
-  afterBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-  afterBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-  cmdList->ResourceBarrier(1, &afterBarrier);
-
-  cmdList->Close();
-
-  ID3D12CommandList *lists[] = {cmdList.Get()};
-  ctx.queue->ExecuteCommandLists(1, lists);
-}
-
-PFN_IDXGISwapChain_Present Original_IDXGISwapChain_Present = nullptr;
-PFN_IDXGISwapChain_ResizeBuffers Original_IDXGISwapChain_ResizeBuffers_DX12 =
-    nullptr;
-
-HRESULT STDMETHODCALLTYPE IDXGISwapChain_Present_Hook(IDXGISwapChain *This,
-                                                      UINT SyncInterval,
-                                                      UINT Flags) {
-  if (!This) {
-    return Original_IDXGISwapChain_Present(This, SyncInterval, Flags);
-  }
-
-  ComPtr<IDXGISwapChain3> swapChain3;
-  if (FAILED(This->QueryInterface(IID_PPV_ARGS(&swapChain3)))) {
-    return Original_IDXGISwapChain_Present(This, SyncInterval, Flags);
-  }
-
-  try {
-    auto &ctx = ImGuiD3D12::ImGuiDX12Resources::Get();
-    if (!ctx.initialized && ctx.device && ctx.swapchain && ctx.queue) {
-      InitImGuiDX12();
+        initializeImGui(false);
+        if (!ImGui_ImplDX11_Init(g_d3d11Device.get(), g_d3d11DeviceContext.get()) || !ImGui_ImplWin32_Init(window)) {
+            Logger::log("Failed to initialize ImGui backends");
+            return presentHookImpl.call<HRESULT>(pSwapChain, SyncInterval, Flags);
+        }
+        Logger::log("Initialized ImGui");
     }
 
-    if (ctx.initialized) {
-      RenderImGuiDX12();
-    }
-  } catch (const std::exception& e) {
-    Logger::log("Exception: %s", e.what());
-  }
-
-  return Original_IDXGISwapChain_Present(This, SyncInterval, Flags);
-}
-
-HRESULT STDMETHODCALLTYPE IDXGISwapChain_ResizeBuffers_Hook(
-    IDXGISwapChain *This, UINT BufferCount, UINT Width, UINT Height,
-    DXGI_FORMAT NewFormat, UINT SwapChainFlags) {
-  Logger::log("IDXGISwapChain_ResizeBuffers_Hook called");
-  auto &ctx = ImGuiD3D12::ImGuiDX12Resources::Get();
-
-  ComPtr<ID3D12Fence> fence;
-  ctx.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-  HANDLE evt = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-  UINT64 val = 1;
-  ctx.queue->Signal(fence.Get(), val);
-  fence->SetEventOnCompletion(val, evt);
-  WaitForSingleObject(evt, INFINITE);
-  CloseHandle(evt);
-
-  HRESULT hr = Original_IDXGISwapChain_ResizeBuffers_DX12(
-      This, BufferCount, Width, Height, NewFormat, SwapChainFlags);
-
-  if (SUCCEEDED(hr)) {
-    DXGI_SWAP_CHAIN_DESC desc{};
-    ctx.swapchain->GetDesc(&desc);
-    ctx.backBufferCount = desc.BufferCount;
-
-    ctx.commandAllocators.clear();
-    ctx.commandLists.clear();
-    ctx.rtvHeaps.clear();
-
-    ctx.commandAllocators.resize(ctx.backBufferCount);
-    ctx.commandLists.resize(ctx.backBufferCount);
-    ctx.rtvHeaps.resize(ctx.backBufferCount);
-
-    for (uint32_t i = 0; i < ctx.backBufferCount; ++i) {
-      ctx.device->CreateCommandAllocator(
-          D3D12_COMMAND_LIST_TYPE_DIRECT,
-          IID_PPV_ARGS(&ctx.commandAllocators[i]));
-      ctx.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                    ctx.commandAllocators[i].Get(), nullptr,
-                                    IID_PPV_ARGS(&ctx.commandLists[i]));
-      ctx.commandLists[i]->Close();
-    }
-
-    ImGui_ImplDX12_InvalidateDeviceObjects();
-    ImGui_ImplDX12_CreateDeviceObjects();
-  }
-
-  return hr;
-}
-
-}
-
-namespace ImGuiD3D11 {
-ID3D11Device *device;
-ComPtr<ID3D11DeviceContext> deviceContext;
-
-uint32_t backBufferCount = 0;
-ID3D11RenderTargetView **renderTargetViews;
-
-void createRT(IDXGISwapChain *swapChain) {
-  for (uint32_t i = 0; i < backBufferCount; i++) {
-    ComPtr<ID3D11Resource> backBuffer;
-    swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
-
-    ID3D11RenderTargetView *rtv;
-    device->CreateRenderTargetView(backBuffer.Get(), nullptr, &rtv);
-
-    renderTargetViews[i] = rtv;
-  }
-}
-
-void releaseRT() {
-  for (size_t i = 0; i < backBufferCount; i++) {
-    if (renderTargetViews[i]) {
-      renderTargetViews[i]->Release();
-      renderTargetViews[i] = nullptr;
-    }
-  }
-}
-
-bool initializeImguiBackend(IDXGISwapChain *pSwapChain) {
-  initializeImGui(false);
-
-  DXGI_SWAP_CHAIN_DESC desc;
-  pSwapChain->GetDesc(&desc);
-
-  backBufferCount = desc.BufferCount;
-  renderTargetViews = new ID3D11RenderTargetView *[backBufferCount];
-
-  device->GetImmediateContext(&deviceContext);
-
-  createRT(pSwapChain);
-
-  ImGui_ImplWin32_Init(g_hWnd);
-  ImGui_ImplDX11_Init(device, deviceContext.Get());
-  ImGui_ImplDX11_CreateDeviceObjects();
-
-  return true;
-}
-
-void renderImGui(IDXGISwapChain3 *swapChain) {
-  ImGui_ImplDX11_NewFrame();
-  ImGui_ImplWin32_NewFrame();
-
-  updateImGui();
-
-  ID3D11RenderTargetView *currentRTV =
-      renderTargetViews[swapChain->GetCurrentBackBufferIndex()];
-  deviceContext->OMSetRenderTargets(1, &currentRTV, nullptr);
-
-  ImGui::Render();
-  ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-}
-
-PFN_IDXGISwapChain_Present Original_IDXGISwapChain_Present = nullptr;
-HRESULT STDMETHODCALLTYPE IDXGISwapChain_Present_Hook(IDXGISwapChain *This,
-                                                      UINT SyncInterval,
-                                                      UINT Flags) {
-  ComPtr<IDXGISwapChain3> swapChain3;
-  if (FAILED(This->QueryInterface(IID_PPV_ARGS(&swapChain3)))) {
-    return Original_IDXGISwapChain_Present(This, SyncInterval, Flags);
-  }
-
-  if (imguiInitialized) {
-    renderImGui(swapChain3.Get());
-  }
-
-  return Original_IDXGISwapChain_Present(This, SyncInterval, Flags);
-}
-
-PFN_IDXGISwapChain_ResizeBuffers Original_IDXGISwapChain_ResizeBuffers;
-HRESULT STDMETHODCALLTYPE IDXGISwapChain_ResizeBuffers_Hook(
-    IDXGISwapChain *This, UINT BufferCount, UINT Width, UINT Height,
-    DXGI_FORMAT NewFormat, UINT SwapChainFlags) {
-  Logger::log("IDXGISwapChain_ResizeBuffers_Hook called");
-  releaseRT();
-  HRESULT hResult = Original_IDXGISwapChain_ResizeBuffers(
-      This, BufferCount, Width, Height, NewFormat, SwapChainFlags);
-  createRT(This);
-  return hResult;
-}
-} // namespace ImGuiD3D11
-
-static LRESULT WINAPI WndProc(HWND hWnd, UINT uMsg, WPARAM wParam,
-                              LPARAM lParam) {
-  if (hWnd == g_hWnd && ImGui::GetCurrentContext()) {
     try {
-      ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
-    } catch (...) {
-      Logger::log("ImGui exception");
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+
+        updateImGui();
+
+        ImGui::Render();
+
+        winrt::com_ptr<ID3D11Resource> backBuffer{};
+        if (g_d3d11on12Device) {
+            DXGI_SWAP_CHAIN_DESC desc;
+            winrt::check_hresult(pSwapChain->GetDesc(&desc));
+            UINT buffer_count = desc.BufferCount;
+            if (buffer_count != wrappedBuffers.size()) {
+                wrappedBuffers.clear();
+                wrappedBuffers.resize(buffer_count);
+                for (UINT i = 0; i < buffer_count; i++) {
+                    auto &bufferData = wrappedBuffers.at(i);
+
+                    winrt::check_hresult(pSwapChain->GetBuffer(i, IID_PPV_ARGS(bufferData.native.put())));
+
+                    D3D11_RESOURCE_FLAGS resourceFlags{};
+                    resourceFlags.BindFlags = D3D11_BIND_RENDER_TARGET;
+                    winrt::check_hresult(g_d3d11on12Device->CreateWrappedResource(
+                            bufferData.native.get(), &resourceFlags, D3D12_RESOURCE_STATE_RENDER_TARGET,
+                            D3D12_RESOURCE_STATE_PRESENT, IID_PPV_ARGS(bufferData.wrapped.put())));
+                }
+                Logger::log("Wrapped resources");
+            }
+
+            backBuffer.copy_from(wrappedBuffers[pSwapChain->GetCurrentBackBufferIndex()].wrapped.get());
+            auto backBufferPtr = backBuffer.get();
+            g_d3d11on12Device->AcquireWrappedResources(&backBufferPtr, 1);
+        } else {
+            pSwapChain->GetBuffer(0, IID_PPV_ARGS(backBuffer.put()));
+        }
+
+        winrt::com_ptr<ID3D11RenderTargetView> g_mainRenderTargetView{};
+        winrt::check_hresult(
+                g_d3d11Device->CreateRenderTargetView(backBuffer.get(), nullptr, g_mainRenderTargetView.put()));
+
+        auto renderTargetView = g_mainRenderTargetView.get();
+        g_d3d11DeviceContext->OMSetRenderTargets(1, &renderTargetView, nullptr);
+
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+        if (g_d3d11on12Device) {
+            auto backBufferPtr = backBuffer.get();
+            g_d3d11on12Device->ReleaseWrappedResources(&backBufferPtr, 1);
+        }
+
+        g_d3d11DeviceContext->Flush();
+    } catch (const winrt::hresult_error &e) {
+        Logger::log("D3D error in presentHook: 0x%08X", static_cast<unsigned int>(e.code()));
+        resetD3DState();
     }
-  }
 
-  if (oWndProc) {
-    return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
-  }
+    return presentHookImpl.call<HRESULT>(pSwapChain, SyncInterval, Flags);
+};
 
-  return DefWindowProc(hWnd, uMsg, wParam, lParam);
+safetyhook::InlineHook executeCommandListsHookImpl{};
+
+void executeCommandListsHook(ID3D12CommandQueue *queue, UINT NumCommandLists,
+                             ID3D12CommandList *const *ppCommandLists) {
+
+    if (!g_d3d12CommandQueue) {
+        g_d3d12CommandQueue.copy_from(queue);
+        Logger::log("Got Command Queue");
+    }
+
+    return executeCommandListsHookImpl.call<void>(queue, NumCommandLists, ppCommandLists);
+};
+
+safetyhook::InlineHook resizeBuffers1HookImpl{};
+HRESULT resizeBuffers1Hook(IDXGISwapChain *swapChain, UINT bufferCount, UINT width, UINT height, DXGI_FORMAT newFormat,
+                           UINT swapChainFlags, const UINT *pCreationNodeMask, IUnknown *ppPresentQueue) {
+
+    if (g_d3d11DeviceContext) {
+        if (g_d3d11on12Device) {
+            wrappedBuffers.resize(0);
+        }
+
+        g_d3d11DeviceContext->Flush();
+    }
+
+    return resizeBuffers1HookImpl.call<HRESULT>(swapChain, bufferCount, width, height, newFormat, swapChainFlags,
+                                                pCreationNodeMask, ppPresentQueue);
 }
 
-PFN_IDXGIFactory2_CreateSwapChainForHwnd
-    Original_IDXGIFactory2_CreateSwapChainForHwnd;
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-HRESULT STDMETHODCALLTYPE IDXGIFactory2_CreateSwapChainForHwnd_Hook(
-    IDXGIFactory2 *This, IUnknown *pDevice, HWND hWnd,
-    const DXGI_SWAP_CHAIN_DESC1 *pDesc,
-    const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *pFullDesc,
-    IDXGIOutput *pRestrictToOutput, IDXGISwapChain1 **ppSwapChain) {
-  Logger::log("IDXGIFactory2_CreateSwapChainForHwnd_Hook called");
+LONG_PTR wndProcO;
+LRESULT wndProcHook(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
-  g_hWnd = hWnd;
-  oWndProc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(
-      g_hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProc)));
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam))
+        return true;
 
-  HRESULT hr = Original_IDXGIFactory2_CreateSwapChainForHwnd(
-      This, pDevice, hWnd, pDesc, pFullDesc, pRestrictToOutput, ppSwapChain);
-
-  if (SUCCEEDED(hr)) {
-    IDXGISwapChain1 *swapChain = *ppSwapChain;
-    ComPtr<ID3D12CommandQueue> d3d12CommandQueue;
-    ComPtr<ID3D11Device> d3d11Device;
-
-    if (SUCCEEDED(pDevice->QueryInterface(IID_PPV_ARGS(&d3d12CommandQueue)))) {
-      Logger::log("dx12");
-      auto &ctx = ImGuiD3D12::ImGuiDX12Resources::Get();
-      swapChain->GetDevice(IID_PPV_ARGS(&ctx.device));
-      ctx.queue = d3d12CommandQueue.Get();
-      ctx.swapchain = (IDXGISwapChain3 *)swapChain;
-
-      memory::ReplaceVtable(
-          *(void **)swapChain, 8,
-          (void **)&ImGuiD3D12::Original_IDXGISwapChain_Present,
-          ImGuiD3D12::IDXGISwapChain_Present_Hook);
-      memory::ReplaceVtable(
-          *(void **)swapChain, 13,
-          (void **)&ImGuiD3D12::Original_IDXGISwapChain_ResizeBuffers_DX12,
-          ImGuiD3D12::IDXGISwapChain_ResizeBuffers_Hook);
-    } else if (SUCCEEDED(pDevice->QueryInterface(IID_PPV_ARGS(&d3d11Device)))) {
-      Logger::log("dx11");
-      ImGuiD3D11::device = (ID3D11Device *)pDevice;
-      memory::ReplaceVtable(
-          *(void **)swapChain, 8,
-          (void **)&ImGuiD3D11::Original_IDXGISwapChain_Present,
-          ImGuiD3D11::IDXGISwapChain_Present_Hook);
-      memory::ReplaceVtable(
-          *(void **)swapChain, 13,
-          (void **)&ImGuiD3D11::Original_IDXGISwapChain_ResizeBuffers,
-          ImGuiD3D11::IDXGISwapChain_ResizeBuffers_Hook);
-      if (!(imguiInitialized = ImGuiD3D11::initializeImguiBackend(swapChain)))
-        Logger::log("Failed to initialize ImGui on Direct3D 11");
-    }
-  }
-
-  return hr;
-}
-
-HRESULT (*createDXGIFactory1Original)(REFIID riid, void **ppFactory) = nullptr;
-
-HRESULT createDXGIFactory1Hook(REFIID riid, void **ppFactory) {
-  Logger::log("createDXGIFactory1Hook called");
-  HRESULT hResult = createDXGIFactory1Original(riid, ppFactory);
-  if (SUCCEEDED(hResult)) {
-    IDXGIFactory2 *factory2 = (IDXGIFactory2 *)*ppFactory;
-    if (!Original_IDXGIFactory2_CreateSwapChainForHwnd) {
-      if (factory2) {
-        factory2->AddRef();
-
-        memory::ReplaceVtable(
-            *(void **)factory2, 15,
-            (void **)&Original_IDXGIFactory2_CreateSwapChainForHwnd,
-            IDXGIFactory2_CreateSwapChainForHwnd_Hook);
-      }
-    }
-  }
-  return hResult;
-}
+    return CallWindowProc(reinterpret_cast<WNDPROC>(wndProcO), hWnd, uMsg, wParam, lParam);
+};
 
 DeclareHook(Mouse,void, void *a1, void *a2, void *a3, void *a4) {
   if (ImGui::GetCurrentContext()) {
@@ -445,25 +211,43 @@ DeclareHook(Mouse,void, void *a1, void *a2, void *a3, void *a4) {
 }
 
 void initImGuiHooks() {
-  HMODULE dxgiModule = GetModuleHandleA("dxgi.dll");
-  if (!dxgiModule)
-    dxgiModule = LoadLibraryA("dxgi.dll");
+    window = FindWindowA("Bedrock", "Minecraft");
 
-  auto pCreateDXGIFactory1 = GetProcAddress(dxgiModule, "CreateDXGIFactory1");
+    if (!window) {
+        Logger::log("Failed to get window");
+    }
 
-  if (!pCreateDXGIFactory1)
-    return;
+    wndProcO = SetWindowLongPtrA(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&wndProcHook));
+    Logger::log("Hooked WndProc");
 
-  MH_CreateHook(
-      pCreateDXGIFactory1,
-      &createDXGIFactory1Hook,
-      reinterpret_cast<void**>(&createDXGIFactory1Original)
-  );
-  MH_EnableHook(pCreateDXGIFactory1);
-  Logger::log("Hooked CreateDXGIFactory1");
+    if (kiero::init(kiero::RenderType::Auto) == kiero::Status::Success) {
+        auto renderType = kiero::getRenderType();
 
-  TrySigHook(Mouse,
-    //1.21.130
-    "4C 8B ? 49 89 ? ? 49 89 ? ? 56 57 41 ? 48 81 EC ? ? ? ? 41 0F ? ? 45 0F"
-  );
+        if (renderType == kiero::RenderType::D3D12) {
+            Logger::log("D3D12 Detected");
+
+            executeCommandListsHookImpl = safetyhook::create_inline(
+                    kiero::getMethod<&ID3D12CommandQueue::ExecuteCommandLists>(), &executeCommandListsHook);
+
+            Logger::log("Hooked executeCommandLists");
+
+            resizeBuffers1HookImpl = safetyhook::create_inline(kiero::getMethod<&IDXGISwapChain3::ResizeBuffers1>(),
+                                                               &resizeBuffers1Hook);
+            Logger::log("Hooked resizeBuffers1");
+        } else {
+            Logger::log("D3D11 Detected");
+        }
+
+        presentHookImpl = safetyhook::create_inline(kiero::getMethod<&IDXGISwapChain::Present>(), &presentHook);
+        Logger::log("Hooked present");
+    } else {
+        Logger::log("Failed to initialize Kiero");
+    }
+
+    TrySigHook(Mouse,
+        // 1.26.10
+        "4C 8B DC 53 55 56 57 41 54 41 56 41 57 48 81 EC ? ? ? ? 45 0F B7 E1",
+        // 1.21.130
+        "4C 8B ? 49 89 ? ? 49 89 ? ? 56 57 41 ? 48 81 EC ? ? ? ? 41 0F ? ? 45 0F"
+    );
 }

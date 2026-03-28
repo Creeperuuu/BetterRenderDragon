@@ -27,9 +27,10 @@ void init() {
   brd::Options::load();
 
   MH_Initialize();
-  initImGuiHooks(); // init asap to catch CreateDXGIFactory1
   initMCPatches();
   initMCHooks();
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+  initImGuiHooks();
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call,

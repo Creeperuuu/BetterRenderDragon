@@ -34,9 +34,30 @@
 ## 📝 How to Install
 
 ---
-### If you are using [LeviLauncher](https://github.com/LiteLDev/LeviLauncher/tree/main) (Recommended)
+### Universal method
 
-1. **Make sure your minecraft version is supported currently versions 26.0 to 26.3 are supported**
+1. **Make sure your minecraft version is supported currently versions 26.0 to 26.11 are supported**
+
+2. **Download Files**
+
+    - Download BetterRenderDragon from the [Releases](https://github.com/QYCottage/BetterRenderDragon/releases/latest) page.
+    - Download [MCBE.DLL Injector](https://github.com/ambiennt/MCBE-DLL-Injector/releases/latest) or use any injector you already have
+
+3. **Adding BetterRenderDragon to the injector**
+
+    - Open your injector.
+    - Click `Select`.
+    - Find the BetterRenderDragon.dll file we downloaded and double click it.
+
+4. **Launch the game**
+    - Open Minecraft
+    - Click the inject button in your injector
+    - Enjoy!
+
+
+### If you are using [LeviLauncher](https://github.com/LiteLDev/LeviLauncher/tree/main)
+
+1. **Make sure your minecraft version is supported currently versions 26.0 to 26.11 are supported**
 
 2. **Download [BetterRenderDragon.dll](#)**
 
@@ -74,6 +95,7 @@
 - [Original authors](https://github.com/ddf8196/BetterRenderDragon)
 - [DreamGuXiang](https://github.com/dreamguxiang)
 - [StoneHunter](https://github.com/st0nehunter)
+- [MCBE-DLL-Menu by h-arvs](https://github.com/h-arvs/MCBE-DLL-Menu)
 
 ---
 
