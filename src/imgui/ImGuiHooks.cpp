@@ -8,7 +8,7 @@
 
 #include "MinHook.h"
 #include "api/memory/HookAPI.hpp"
-#include <kiero.hpp>
+#include "../lib/kiero-src/include/kiero.hpp"
 #include <winrt/base.h>
 #include <safetyhook.hpp>
 using Microsoft::WRL::ComPtr;
@@ -250,6 +250,8 @@ void initImGuiHooks() {
     }
 
     TrySigHook(Mouse,
+        // 1.26.20
+        "55 41 57 41 56 41 55 41 54 56 57 53 48 83 EC ? 48 8D 6C 24 ? 48 C7 45 ? ? ? ? ? 44 89 CE 4C 89 C3 49 89 D6",
         // 1.26.10
         "4C 8B DC 53 55 56 57 41 54 41 56 41 57 48 81 EC ? ? ? ? 45 0F B7 E1",
         // 1.21.130

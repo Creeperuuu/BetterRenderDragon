@@ -95,6 +95,7 @@ void SetupImGuiStyle() {
 	style.Colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.0f, 1.0f, 1.0f, 0.7f);
 	style.Colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.8f, 0.8f, 0.8f, 0.2f);
 	style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.8f, 0.8f, 0.8f, 0.35f);
+	style.Colors[ImGuiCol_CheckboxSelectedBg] = ImVec4(0.13725491f, 0.17254902f, 0.22745098f, 0.54f);
 }
 
 void initializeImGui(bool isDx12) {
@@ -128,6 +129,7 @@ void initializeImGui(bool isDx12) {
 
 inline bool IsChangingUIKey = false;
 inline bool JustChangedKey = false;
+inline bool IsChangingIsChangingReloadShadersKey = false;
 
 void updateImGui() {
 	static bool showDemo = false;
@@ -266,6 +268,25 @@ void updateImGui() {
 				}
 				ImGui::SameLine();
 				ImGui::Text("Current: %s", ImGui::GetKeyName(static_cast<ImGuiKey>(Options::uiKey.get())));
+
+				if (ImGui::Button(IsChangingIsChangingReloadShadersKey == false ? "Set Reload Shaders Key" : "Cancel")) {
+					IsChangingIsChangingReloadShadersKey = !IsChangingIsChangingReloadShadersKey;
+				}
+				if (IsChangingIsChangingReloadShadersKey) {
+					for (int i = ImGuiKey_NamedKey_BEGIN; i < ImGuiKey_NamedKey_END; i++) {
+						ImGuiKey key = static_cast<ImGuiKey>(i);
+
+						if (!ImGui::IsMouseKey(key) && ImGui::IsKeyDown(key)) {
+							Options::reloadShadersKey = key;
+							IsChangingIsChangingReloadShadersKey = false;
+
+							ImGui::GetIO().AddKeyEvent(key, false);
+							break;
+						}
+					}
+				}
+				ImGui::SameLine();
+				ImGui::Text("Current: %s", ImGui::GetKeyName(static_cast<ImGuiKey>(Options::reloadShadersKey.get())));
 				ImGui::Unindent();
 			}
 

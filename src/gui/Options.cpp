@@ -128,6 +128,8 @@ bool Options::load() {
     showImGui = data["showImGui"];
   if (data.contains("uiKey"))
     uiKey = data["uiKey"];
+  if (data.contains("reloadShadersKey"))
+    reloadShadersKey = data["reloadShadersKey"];
   if (data.contains("performanceEnabled"))
     performanceEnabled = data["performanceEnabled"];
   if (data.contains("graphicsEnabled"))
@@ -152,6 +154,7 @@ bool Options::save() {
   json data;
   data["showImGui"] = showImGui.get();
   data["uiKey"] = uiKey.get();
+  data["reloadShadersKey"] = reloadShadersKey.get();
   data["performanceEnabled"] = performanceEnabled.get();
   data["graphicsEnabled"] = graphicsEnabled.get();
   data["settingsEnabled"] = settingsEnabled.get();

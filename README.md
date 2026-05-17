@@ -6,7 +6,7 @@
 
 # 🚀 BetterRenderDragon
 
-**Add more features to RenderDragon! Compatible with Minecraft Bedrock Edition 26.0 to 26.3**
+**Add more features to RenderDragon! Compatible with Minecraft Bedrock Edition 26.2X**
 
 <div align="center">
 
@@ -36,7 +36,7 @@
 ---
 ### Universal method
 
-1. **Make sure your minecraft version is supported currently versions 26.0 to 26.11 are supported**
+1. **Make sure your minecraft version is supported currently versions 26.2X is supported**
 
 2. **Download Files**
 
@@ -57,7 +57,7 @@
 
 ### If you are using [LeviLauncher](https://github.com/LiteLDev/LeviLauncher/tree/main)
 
-1. **Make sure your minecraft version is supported currently versions 26.0 to 26.11 are supported**
+1. **Make sure your minecraft version is supported currently versions 26.2X is supported**
 
 2. **Download [BetterRenderDragon.dll](#)**
 

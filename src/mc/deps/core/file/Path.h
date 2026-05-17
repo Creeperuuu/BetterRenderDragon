@@ -10,6 +10,36 @@ template <typename Container> class PathBuffer;
 
 using HeapPathBuffer = PathBuffer<std::string>;
 
+class PathView {
+public:
+  ~PathView() = default;
+
+  PathView(const PathView& other)            = default;
+  PathView& operator=(const PathView& other) = default;
+
+  PathView(PathView&& other) noexcept            = default;
+  PathView& operator=(PathView&& other) noexcept = default;
+
+  explicit PathView(const std::string& s) : mSrc(s) {}
+  explicit PathView(const char* s) : mSrc(s ? s : "") {}
+  explicit PathView(std::string_view s) : mSrc(s) {}
+
+  [[nodiscard]] size_t size() const { return mSrc.size(); }
+  [[nodiscard]] bool   empty() const { return mSrc.empty(); }
+
+  [[nodiscard]] std::string_view getUtf8StringView() const { return mSrc; }
+  [[nodiscard]] const char*      getUtf8CString() const { return mSrc.data(); }
+
+  [[nodiscard]] bool isAbsolute() const {
+    if (mSrc.size() >= 2 && std::isalpha((unsigned char)mSrc[0]) && mSrc[1] == ':') return true;
+    if (mSrc.size() >= 2 && mSrc[0] == '\\' && mSrc[1] == '\\') return true;
+    return false;
+  }
+
+private:
+  std::string_view mSrc;
+};
+
 class PathPart {
   std::string mUtf8StdString;
 

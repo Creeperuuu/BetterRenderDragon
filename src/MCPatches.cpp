@@ -90,7 +90,7 @@ void initMCPatches() {
 
   // Bypass VendorID check to support some Intel GPUs
   // bgfx::d3d12::RendererContextD3D12::init
-  if (auto ptr = FindSignature("81 BF ?? ?? 00 00 86 80 00 00"); ptr) {
+  if (auto ptr = FindSignature("81 BE ? ? ? ? ? ? ? ? 75 ? 48 C7 45" /*"81 BF ?? ?? 00 00 86 80 00 00"*/); ptr) {
     // 1.19.40
     ScopedVP(ptr, 10, PAGE_READWRITE);
     ptr[6] = 0;
@@ -106,10 +106,10 @@ void initMCPatches() {
 
   // Fix rendering issues on some NVIDIA GPUs
   // dragon::bgfximpl::toSamplerFlags
-  if (auto ptr = FindSignature("FF E1 80 7B ? ? B8 00 00 07 10"); ptr) {
-    // 1.21.50
-    ScopedVP(ptr, 10, PAGE_READWRITE);
-    ptr[9] = 0;
+  if (auto ptr = FindSignature("0D ? ? ? ? 80 79 ? ? 0F 44 C2"); ptr) {
+    // 1.26.20
+    ScopedVP(ptr, 13, PAGE_READWRITE);
+    ptr[4] = 0;
   } else {
     Logger::log("Failed to patch dragon::bgfximpl::toSamplerFlags");
   }

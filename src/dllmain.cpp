@@ -22,6 +22,7 @@
 void initMCHooks();
 
 void init() {
+  std::filesystem::remove(Global::GetBRDRaomingPath() + "\\logs.txt");
   Logger::log("BetterRenderDragon %s", BetterRDVersion);
   brd::Options::init();
   brd::Options::load();
