@@ -62,6 +62,8 @@ DeclareHook(clientInstance_Update, __int64, void *This,
   using func_t = void *(*)(void *);
   static uintptr_t adrr = FindSignatures(
       // ClientInstance::getResourcePackManager
+      // 1.26.30
+      "48 8B 89 ? ? ? ? 48 8B 01 48 8B 80 ? ? ? ? 48 8B 15 ? ? ? ? 48 FF E2 CC CC CC CC CC 48 8B 89 ? ? ? ? 48 8B 01 48 8B 80 ? ? ? ? 48 8B 15 ? ? ? ? 48 FF E2 CC CC CC CC CC 56 48 83 EC ? 48 89 D6 48 8B 89 ? ? ? ? 48 8B 01",
       // 1.26.20
       "48 8B 89 ? ? ? ? 48 8B 01 48 8B 80 ? ? ? ? 48 8B 15 ? ? ? ? 48 FF E2 CC CC CC CC CC 48 8B 89 ? ? ? ? 48 8B 01 48 8B 80 ? ? ? ? 48 8B 15 ? ? ? ? 48 FF E2 CC CC CC CC CC 56 48 83 EC ? 48 89 D6 48 8B 89 ? ? ? ? 48 8B 01",
       // 1.21.120
@@ -153,6 +155,8 @@ void initMCHooks() {
   }
 
   TrySigHook(clientInstance_Update,
+             // 1.26.30
+             "55 41 57 41 56 41 55 41 54 56 57 53 48 81 EC ? ? ? ? 48 8D AC 24 ? ? ? ? 48 C7 85 ? ? ? ? ? ? ? ? 89 D3 48 89 CE 48 8B 01",
              // 1.26.20
              "55 56 57 53 48 81 EC ? ? ? ? 48 8D AC 24 ? ? ? ? 48 C7 85 ? ? ? ? ? ? ? ? 89 D3 48 89 CE 48 8B 01",
              // 1.26.10
@@ -165,6 +169,8 @@ void initMCHooks() {
              "? ? 44 0F B6 FA 48 8B F9 33 DB");
 
   TrySigHook(readFile,
+             // 1.26.30
+             "55 41 57 41 56 56 57 53 48 81 EC ? ? ? ? 48 8D AC 24 ? ? ? ? 48 C7 85 ? ? ? ? ? ? ? ? 48 89 D6 41 0F 10 00",
              // 1.26.20
              "55 56 48 83 EC ? 48 8D 6C 24 ? 48 C7 45 ? ? ? ? ? 48 89 D6 48 8D 4D ? 4C 89 45 ? 4C 89 C2 E8 ? ? ? ? 48 8D 55 ? 48 89 F1 E8 ? ? ? ? 48 8B 4D ? E8 ? ? ? ? 48 89 F0 48 83 C4 ? 5E 5D C3 66 66 2E 0F 1F 84 00 ? ? ? ? 48 89 54 24 ? 55 56 48 83 EC ? 48 8D 6A ? 48 8B 4D ? E8 ? ? ? ? 90 48 83 C4 ? 5E 5D C3 55 56",
              // 1.26.0
@@ -172,6 +178,8 @@ void initMCHooks() {
              "11 44 24 ? E8 ? ? ? ? 48 8B C3 48 83 C4 ? 5B C3 CC CC CC CC CC "
              "CC CC CC 48 89 5C 24");
   TrySigHook(mce_framebuilder_BgfxFrameBuilder_endFrame,
+             // 1.26.30
+             "55 41 57 41 56 41 55 41 54 56 57 53 B8 ? ? ? ? E8 ? ? ? ? 48 29 C4 48 8D AC 24 ? ? ? ? 44 0F 29 8D ? ? ? ? 44 0F 29 85 ? ? ? ? 0F 29 BD ? ? ? ? 0F 29 B5 ? ? ? ? 48 C7 85 ? ? ? ? ? ? ? ? 48 89 95 ? ? ? ? 48 89 8D",
              // 1.26.20
              "55 41 57 41 56 41 55 41 54 56 57 53 B8 ? ? ? ? E8 ? ? ? ? 48 29 C4 48 8D AC 24 ? ? ? ? 66 44 0F 29 95",
              // 1.26.10
