@@ -6,6 +6,11 @@
 
 #include "Options.h"
 #include "Version.h"
+
+#ifndef ImGuiCol_CheckboxSelectedBg
+#define ImGuiCol_CheckboxSelectedBg ImGuiCol_CheckMark // Fallback to an identifier that 1.92.4 understands
+#endif
+
 using namespace brd;
 
 void SetupImGuiStyle() {
